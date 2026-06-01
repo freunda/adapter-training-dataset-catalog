@@ -6,6 +6,11 @@
 //   Reasoning         — multi-step logic, schema/code understanding, chain-of-thought
 //   Understanding     — interpret and classify input (binary detection, intent classification)
 //   Knowledge         — recall domain-specific facts (API specs, MITRE techniques, DB schemas)
+//
+// Pipeline stages per domain:
+//   NL→SQL:      1-Triage  →  2-Generation  →  3-Repair   →  4-Robustness Eval
+//   Vulnerability: 1-Detection  →  (2-CWE gap)  →  3-Patch Gen  →  4-TTP Mapping
+//   Agentic:     1-Intent  →  2-Function Call  →  3-Multi-turn  →  4-Trajectory
 window.CATALOG = [
 
   // ── NL→SQL ─────────────────────────────────────────────────────────────────
@@ -27,7 +32,12 @@ window.CATALOG = [
     taskCategories: ["Generation"],
     taskNote: "Pure SQL generation from NL + schema. Synthetic — no complex reasoning required; strong signal for output format and syntax.",
     notes: "Best pure training corpus for SQL generation. Synthetic but high variety. No competitive benchmark — use for fine-tuning, evaluate on Spider/BIRD.",
-    composability: "High — pairs with Spider/BIRD eval"
+    composability: "High — pairs with Spider/BIRD eval",
+    pipelineStage: 2,
+    pipelineStageLabel: "Generation",
+    avgContextTokens: 500,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Schema context is required to generate syntactically valid SQL across 100 verticals."
   },
   {
     id: "spider",
@@ -45,8 +55,13 @@ window.CATALOG = [
     rankReason: "Gold-standard benchmark; most published LoRAs; clear baseline to beat",
     taskCategories: ["Generation", "Reasoning"],
     taskNote: "Cross-domain SQL requires schema reasoning (joining tables, understanding relationships) and structured output generation.",
-    notes: "Cross-domain text-to-SQL gold standard. Best baseline is CodeS-7B (85.4% EX). Chains naturally with NL2SQL-BUGs for error detection.",
-    composability: "Excellent — chains with error detection adapter"
+    notes: "Cross-domain text-to-SQL gold standard. Best baseline is CodeS-7B (85.4% EX). Chains naturally with BIRD-CRITIC for error detection.",
+    composability: "Excellent — chains with repair stage",
+    pipelineStage: 2,
+    pipelineStageLabel: "Generation",
+    avgContextTokens: 325,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Database schema is mandatory — without table/column names, cross-domain SQL is impossible."
   },
   {
     id: "bird-sql",
@@ -65,7 +80,12 @@ window.CATALOG = [
     taskCategories: ["Generation", "Reasoning", "Knowledge"],
     taskNote: "Real-world DBs require domain knowledge (e.g. medical, finance schemas), multi-hop reasoning, and precise SQL generation.",
     notes: "Best real-world difficulty. Caution: 22 wrong gold queries; BIRD EX has ~32% annotation noise (FLEX, NAACL 2025). Always report with caveats.",
-    composability: "Best real-world stress test"
+    composability: "Best real-world stress test",
+    pipelineStage: 2,
+    pipelineStageLabel: "Generation",
+    avgContextTokens: 3000,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Large real-world DBs (avg 80 columns) require schema-linking; context is the primary constraint."
   },
   {
     id: "wikisql",
@@ -84,7 +104,36 @@ window.CATALOG = [
     taskCategories: ["Generation"],
     taskNote: "Single-table, simple SQL — mostly pattern matching. Minimal reasoning required. Teaches output format, not schema understanding.",
     notes: "Single-table, simple SQL. Almost every model exceeds 87% EX — diminishing returns for benchmarking. Use only as warm-up / training augmentation.",
-    composability: "Low — single-table, not representative of real workloads"
+    composability: "Low — single-table, not representative of real workloads",
+    pipelineStage: 2,
+    pipelineStageLabel: "Generation",
+    avgContextTokens: 100,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Single-table schema is small but still required for column name resolution."
+  },
+  {
+    id: "bird-critic",
+    name: "BIRD-CRITIC",
+    hf: "birdsql/bird-critic-1.0-open",
+    domain: "NL→SQL",
+    subdomain: "SQL Repair",
+    usage: "both",
+    license: "CC BY-NC 4.0",
+    size: "570 open / 200 held-out PG / 200 OOD / PostgreSQL",
+    bestBaseline: "O3-mini 38.87%; BIRD-Talon-14B (RL/PEFT) released",
+    loraArtifacts: "BIRD-Talon-14B, BIRD-Zeno-7B (RL/PEFT)",
+    tier: 1,
+    rank: 5,
+    rankReason: "Only SQL repair dataset with deployed RL/PEFT adapter; fills Stage 3 gap in NL→SQL pipeline",
+    taskCategories: ["Reasoning", "Generation"],
+    taskNote: "Model receives a wrong SQL query + execution error feedback, must reason about the mistake and generate a corrected version.",
+    notes: "Fills the repair stage missing from Spider/BIRD. SIX-GYM eval environment tests corrections with real PostgreSQL execution + query execution plan analysis.",
+    composability: "Stage 3 — receives output from Spider/BIRD generation adapters",
+    pipelineStage: 3,
+    pipelineStageLabel: "SQL Repair",
+    avgContextTokens: 600,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Wrong SQL + execution error message + schema are all required to generate a valid repair."
   },
 
   // ── Vulnerability ──────────────────────────────────────────────────────────
@@ -106,7 +155,12 @@ window.CATALOG = [
     taskCategories: ["Understanding", "Reasoning"],
     taskNote: "Model must understand C/C++ code semantics and reason about vulnerability patterns — beyond surface syntax.",
     notes: "Best training corpus for vuln detection. High F1 on BigVul itself (0.91) collapses to ~3% on PrimeVul — always pair BigVul training with PrimeVul eval to test real generalization.",
-    composability: "Excellent — detection→CWE classification→fix chain"
+    composability: "Excellent — detection→CWE classification→fix chain",
+    pipelineStage: 1,
+    pipelineStageLabel: "Detection",
+    avgContextTokens: 180,
+    contextRelevancy: "High",
+    contextRelevancyNote: "The C/C++ function body IS the task — vulnerability patterns are localized to the code snippet."
   },
   {
     id: "devign",
@@ -125,7 +179,12 @@ window.CATALOG = [
     taskCategories: ["Understanding"],
     taskNote: "Binary classification of C functions. Teaches the model to distinguish vulnerable from benign code patterns.",
     notes: "Clean binary detection dataset. MIT license makes it safe for publication. Limited to C/C++ (FFmpeg + QEMU). Use as complement to BigVul.",
-    composability: "Good binary detection stage"
+    composability: "Good binary detection stage",
+    pipelineStage: 1,
+    pipelineStageLabel: "Detection",
+    avgContextTokens: 200,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Binary classification requires reading the full function; no answer is possible without the code."
   },
   {
     id: "primevul",
@@ -144,7 +203,12 @@ window.CATALOG = [
     taskCategories: ["Understanding", "Reasoning"],
     taskNote: "Hardest detection task — deduplicated, chronological. Requires deep code reasoning beyond memorized patterns.",
     notes: "The hardest and most realistic vuln detection benchmark. Train on BigVul, eval here. Low F1 ceiling (~17.8% for 7B models) means strong improvement signal.",
-    composability: "Highest realism — use as held-out eval"
+    composability: "Highest realism — use as held-out eval",
+    pipelineStage: 1,
+    pipelineStageLabel: "Detection",
+    avgContextTokens: 450,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Deduplicated real-world CVE functions; vulnerability patterns require precise code reading."
   },
   {
     id: "cvefixes",
@@ -163,7 +227,12 @@ window.CATALOG = [
     taskCategories: ["Generation", "Reasoning"],
     taskNote: "Model must understand a vulnerable code snippet and generate a corrected version — requires both code reasoning and generation.",
     notes: "Best multi-language patch generation dataset. Very low F1 baseline (12.8) means large improvement headroom. Clean license (CC BY 4.0 + MIT).",
-    composability: "Detection→patch generation chain"
+    composability: "Detection→patch generation chain",
+    pipelineStage: 3,
+    pipelineStageLabel: "Patch Generation",
+    avgContextTokens: 300,
+    contextRelevancy: "High",
+    contextRelevancyNote: "The vulnerable function is the only source of information for generating a correct fix."
   },
   {
     id: "crossvul",
@@ -182,7 +251,12 @@ window.CATALOG = [
     taskCategories: ["Understanding"],
     taskNote: "Multi-language binary detection. Teaches language-agnostic vulnerability patterns (C, Python, Java, etc.).",
     notes: "Multi-language supplement to BigVul. No standalone benchmark — use as data augmentation only.",
-    composability: "Augmentation layer"
+    composability: "Augmentation layer",
+    pipelineStage: 1,
+    pipelineStageLabel: "Detection",
+    avgContextTokens: 200,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Multi-language vulnerability detection; code context is essential regardless of language."
   },
   {
     id: "reveal",
@@ -201,11 +275,40 @@ window.CATALOG = [
     taskCategories: ["Understanding"],
     taskNote: "Binary detection under realistic class imbalance (~9:1). Tests whether the model has learned vulnerability understanding vs. majority-class bias.",
     notes: "Tests robustness to real-world class imbalance (~9:1 benign). Use to validate that the adapter doesn't overfit to balanced training data.",
-    composability: "Imbalance robustness test"
+    composability: "Imbalance robustness test",
+    pipelineStage: 1,
+    pipelineStageLabel: "Detection",
+    avgContextTokens: 200,
+    contextRelevancy: "High",
+    contextRelevancyNote: "9:1 imbalanced binary detection; the function body is the only signal available."
   },
 
   // ── Agentic ────────────────────────────────────────────────────────────────
 
+  {
+    id: "when2call",
+    name: "When2Call",
+    hf: "nvidia/When2Call",
+    domain: "Agentic",
+    subdomain: "Intent Classification",
+    usage: "both",
+    license: "Unconfirmed (NVIDIA)",
+    size: "SFT train + DPO (preference) train + 3,652 MCQ test + 300 LLM-judge test",
+    bestBaseline: "NVIDIA Mistral-NeMo-Minitron + RPO outperforms SFT baselines",
+    loraArtifacts: "None on HF yet — open opportunity",
+    tier: 1,
+    rank: 1,
+    rankReason: "No published LoRA = win opportunity; cleanest intent-classification contract; DPO data included",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Model must understand the user's intent and reason about whether tool use is appropriate — a meta-level capability distinct from knowing how to call tools.",
+    notes: "Cleanest when-not-to-call-tools dataset. No published LoRA adapter exists — first mover advantage. DPO data makes it suitable for preference alignment.",
+    composability: "Tool-use intent classification stage (pipeline gating)",
+    pipelineStage: 1,
+    pipelineStageLabel: "Intent Classification",
+    avgContextTokens: 200,
+    contextRelevancy: "Low",
+    contextRelevancyNote: "The decision to call a tool is primarily driven by the user's NL request, not external context."
+  },
   {
     id: "xlam-60k",
     name: "xLAM Function Calling 60k",
@@ -218,12 +321,17 @@ window.CATALOG = [
     bestBaseline: "xLAM-7b-fc-r 88.24% BFCL overall",
     loraArtifacts: "xLAM-1b/7b-fc-r on HF; official QLoRA fine-tuning cookbook",
     tier: 1,
-    rank: 1,
+    rank: 2,
     rankReason: "Official training corpus for SOTA BFCL results; proven LoRA recipe; 3,673 verified APIs",
     taskCategories: ["Generation", "Knowledge"],
     taskNote: "Model must know API signatures (Knowledge) and generate correctly structured function calls with right parameters (Generation).",
     notes: "Primary training corpus for function calling adapters. The xLAM-*-fc-r models are trained on this and hold top BFCL positions. Official QLoRA recipe available.",
-    composability: "Primary training data — foundation for function-calling adapter"
+    composability: "Primary training data — foundation for function-calling adapter",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 414,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "API specs help disambiguate function signatures, but many tool calls are inferable from NL alone."
   },
   {
     id: "glaive-fc-v2",
@@ -237,12 +345,17 @@ window.CATALOG = [
     bestBaseline: "Base for Hermes-2-Pro, Mistral FC variants",
     loraArtifacts: "96+ models on HF trained on this data",
     tier: 1,
-    rank: 2,
+    rank: 3,
     rankReason: "96+ downstream LoRAs; CC BY-SA; most widely used FC training corpus",
     taskCategories: ["Generation", "Reasoning"],
     taskNote: "Multi-turn conversations require tracking context across turns (Reasoning) and generating correct function calls (Generation).",
     notes: "Most widely reused function-calling training dataset. 96+ LoRA models trace their training lineage here. CC BY-SA license is clean for publication.",
-    composability: "Solid warm-up / augmentation layer"
+    composability: "Solid warm-up / augmentation layer",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 512,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "Multi-turn context matters for state tracking, but function specs are often redundant with the NL description."
   },
   {
     id: "toolmind",
@@ -256,31 +369,17 @@ window.CATALOG = [
     bestBaseline: "Qwen3-14B + ToolMind: 53.00% τ-bench (+14.22% over base)",
     loraArtifacts: "Trains LoRA-compatible models",
     tier: 1,
-    rank: 3,
+    rank: 4,
     rankReason: "Best aggregator: integrates xLAM-60k + When2Call + glaive + ToolACE + APIGen-MT; largest volume",
     taskCategories: ["Generation", "Reasoning", "Knowledge"],
     taskNote: "Broadest agentic coverage — model learns API knowledge, multi-step tool planning, and output generation across 7 source datasets.",
     notes: "Best single training corpus when you want breadth. Aggregates 7 source datasets. +14.22% τ-bench improvement reported with Qwen3-14B.",
-    composability: "Best aggregator dataset"
-  },
-  {
-    id: "when2call",
-    name: "When2Call",
-    hf: "nvidia/When2Call",
-    domain: "Agentic",
-    subdomain: "Intent Classification",
-    usage: "both",
-    license: "Unconfirmed (NVIDIA)",
-    size: "SFT train + DPO (preference) train + 3,652 MCQ test + 300 LLM-judge test",
-    bestBaseline: "NVIDIA Mistral-NeMo-Minitron + RPO outperforms SFT baselines",
-    loraArtifacts: "None on HF yet — open opportunity",
-    tier: 1,
-    rank: 4,
-    rankReason: "No published LoRA = win opportunity; cleanest intent-classification contract; DPO data included",
-    taskCategories: ["Understanding", "Reasoning"],
-    taskNote: "Model must understand the user's intent and reason about whether tool use is appropriate — a meta-level capability distinct from knowing how to call tools.",
-    notes: "Cleanest when-not-to-call-tools dataset. No published LoRA adapter exists — first mover advantage. DPO data makes it suitable for preference alignment.",
-    composability: "Tool-use intent classification stage (pipeline gating)"
+    composability: "Best aggregator dataset",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 500,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "Aggregated across 7 source datasets; API specs are helpful but intent is often expressed in NL."
   },
   {
     id: "toolace",
@@ -299,14 +398,19 @@ window.CATALOG = [
     taskCategories: ["Generation", "Knowledge"],
     taskNote: "Diverse API pool (26.5k) teaches API knowledge breadth; output is structured function calls.",
     notes: "Strong training data behind top BFCL results. ToolACE-8B holds 89.17% on BFCL-v1. Partially public on HF.",
-    composability: "Excellent augmentation for function calling"
+    composability: "Excellent augmentation for function calling",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 400,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "26.5K API pool requires specs for correct parameter typing, but coarse intent is NL-inferable."
   },
   {
     id: "apigen-mt-5k",
     name: "APIGen-MT-5k",
     hf: "Salesforce/APIGen-MT-5k",
     domain: "Agentic",
-    subdomain: "Multi-turn",
+    subdomain: "Multi-turn Planning",
     usage: "training",
     license: "Unconfirmed",
     size: "5k blueprint-driven multi-turn trajectories",
@@ -318,7 +422,12 @@ window.CATALOG = [
     taskCategories: ["Reasoning", "Generation"],
     taskNote: "Multi-turn trajectories require planning across steps (Reasoning) and generating correct calls at each step (Generation). Key for reliability.",
     notes: "Small (5k) but the training data behind xLAM-2 τ-bench results that beat GPT-4o. Essential for multi-turn reliability.",
-    composability: "Multi-turn agent interaction stage"
+    composability: "Multi-turn agent interaction stage",
+    pipelineStage: 3,
+    pipelineStageLabel: "Multi-turn Planning",
+    avgContextTokens: 800,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Multi-turn trajectories require tracking prior tool outputs as context for each subsequent call."
   },
   {
     id: "bfcl",
@@ -337,6 +446,35 @@ window.CATALOG = [
     taskCategories: ["Generation", "Knowledge"],
     taskNote: "Eval-only. Tests API knowledge recall and structured output generation across AST + execution + relevance dimensions.",
     notes: "The consensus function-calling eval benchmark. Do not train on this. Leaderboard moves fast — re-pull numbers on the day of submission.",
-    composability: "Primary eval anchor"
+    composability: "Primary eval anchor",
+    pipelineStage: 4,
+    pipelineStageLabel: "Benchmark Eval",
+    avgContextTokens: 6218,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "37-tool toolsets provide context that reduces ambiguity, but eval measures generalization beyond specs."
+  },
+  {
+    id: "agent-instruct",
+    name: "AgentInstruct",
+    hf: "zai-org/AgentInstruct",
+    domain: "Agentic",
+    subdomain: "Trajectory Decomposition",
+    usage: "training",
+    license: "Apache 2.0",
+    size: "1,866 trajectories / 6 environments (DB, OS, web, card, reasoning, KG)",
+    bestBaseline: "AgentLM-70B (Llama-2 + AgentInstruct FFT) matches GPT-3.5 on AgentBench",
+    loraArtifacts: "AgentLM-70B (FFT, LoRA-portable)",
+    tier: 2,
+    rank: 8,
+    rankReason: "Only trajectory-decomposition dataset with published model; fills Stage 4 gap in Agentic pipeline",
+    taskCategories: ["Reasoning", "Generation"],
+    taskNote: "Multi-environment trajectories teach long-horizon planning — sequences of tool calls across diverse environments.",
+    notes: "Small (1.9K) but covers 6 diverse environments. AgentBench held-out eval (8 environments). LoRA-portable from the FFT checkpoint.",
+    composability: "Stage 4 — long-horizon planning atop Stage 2/3 function-calling adapters",
+    pipelineStage: 4,
+    pipelineStageLabel: "Trajectory Decomposition",
+    avgContextTokens: 1200,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Full trajectory history (prior observations + tool results) is required to determine the next action."
   }
 ];
