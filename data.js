@@ -283,6 +283,31 @@ window.CATALOG = [
     contextRelevancyNote: "9:1 imbalanced binary detection; the function body is the only signal available."
   },
 
+  {
+    id: "circl-vuln-cwe",
+    name: "CIRCL Vulnerability CWE Patch",
+    hf: "CIRCL/vulnerability-cwe-patch",
+    domain: "Vulnerability",
+    subdomain: "CWE Classification",
+    usage: "both",
+    license: "Unconfirmed",
+    size: "39.2k CVEs / 49k patches / 35.3k train / 3.9k test",
+    bestBaseline: "CIRCL/cwe-parent-vulnerability-classification-roberta-base (published fine-tune)",
+    loraArtifacts: "CIRCL/cwe-parent-vulnerability-classification-roberta-base",
+    tier: 1,
+    rank: 7,
+    rankReason: "Only dedicated CWE classification dataset with train/test split and a published fine-tuned model; fills Stage 2 gap in Vulnerability pipeline",
+    taskCategories: ["Understanding", "Knowledge"],
+    taskNote: "Model maps CVE description → CWE ID, requiring knowledge of vulnerability taxonomy and understanding of security semantics.",
+    notes: "39.2K real CVEs with CWE labels sourced from NVD, GHSA, GitHub. Published RoBERTa fine-tune confirms viability. Filter rows where cwe is not null for classification training.",
+    composability: "Stage 2 — classifies vulnerability type after detection; feeds into targeted patch generation",
+    pipelineStage: 2,
+    pipelineStageLabel: "CWE Classification",
+    avgContextTokens: 400,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "CVE description provides context but CWE patterns are partly parametric — model can learn taxonomy from description text alone."
+  },
+
   // ── Agentic ────────────────────────────────────────────────────────────────
 
   {
