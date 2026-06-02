@@ -16,6 +16,30 @@ window.CATALOG = [
   // ── NL→SQL ─────────────────────────────────────────────────────────────────
 
   {
+    id: "ehrsql",
+    name: "EHRSQL (MIMIC-III)",
+    hf: "nannullna/ehrsql_mimic_iii",
+    domain: "NL→SQL",
+    subdomain: "Answerability Triage",
+    usage: "both",
+    license: "Unconfirmed (no LICENSE on card — verify before commercial use)",
+    size: "10,440 examples / 9,320 train / 1,120 val / MIMIC-III EHR schema",
+    bestBaseline: "RoBERTa baseline ~60% F1 (TriageSQL paper); no published LoRA on EHRSQL",
+    loraArtifacts: "None — first LoRA triage adapter is an open opportunity",
+    tier: 1,
+    rank: 0,
+    rankReason: "Only HF dataset with explicit answerable/unanswerable labels for NL→SQL; fills the Stage 1 gap",
+    taskCategories: ["Understanding"],
+    taskNote: "Given a clinical NL question + EHR schema, classify whether the question is answerable by SQL (is_impossible field). Teaches the model to gate before generation.",
+    notes: "Narrower domain (medical EHR / MIMIC-III only) than TriageSQL (20 datasets, ~390K). Best available HF option for Stage 1. TriageSQL and PRACTIQ have no HF mirror. License unconfirmed — verify before commercial training.",
+    composability: "Stage 1 gate — run before SQL generation adapter to reject unanswerable questions",
+    pipelineStage: 1,
+    pipelineStageLabel: "Answerability Triage",
+    avgContextTokens: 150,
+    contextRelevancy: "High",
+    contextRelevancyNote: "The schema and question together determine answerability — both are required inputs."
+  },
+  {
     id: "gretelai-synthetic-sql",
     name: "Gretel Synthetic Text-to-SQL",
     hf: "gretelai/synthetic_text_to_sql",
