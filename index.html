@@ -319,63 +319,51 @@
 
   #pipelineSection { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
 
-  /* Capability histogram */
-  .capability-histogram {
+  /* Capability histogram — chart card style (matches adapter-taxonomy) */
+  .chart-card {
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 14px 16px;
+    padding: 14px 16px 12px;
     margin-bottom: 20px;
-  }
-  .capability-histogram-header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
   }
-  .capability-histogram-title {
+  .chart-card h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: #111;
+    margin-bottom: 4px;
+  }
+  .chart-card .chart-sub {
     font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .05em;
-    text-transform: uppercase;
     color: #6b7280;
+    margin-bottom: 8px;
   }
-  .capability-histogram-sub { font-size: 11px; color: #9ca3af; }
-  .capability-row {
-    display: grid;
-    grid-template-columns: 160px 1fr 36px;
-    align-items: center;
-    gap: 10px;
-    padding: 3px 0;
-  }
-  .capability-row-label {
+  .chart-canvas-wrap { position: relative; height: 380px; }
+
+  .cap {
+    display: inline-block;
     font-size: 11px;
-    font-weight: 700;
-    color: #374151;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #fef3c7;
+    color: #78350f;
+    border: 1px solid #fde68a;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
-  .capability-row-track {
-    background: #f3f4f6;
-    border-radius: 4px;
-    height: 14px;
-    overflow: hidden;
-  }
-  .capability-row-fill {
-    background: #1a1a1a;
-    height: 100%;
-    border-radius: 4px;
-    transition: width .2s ease;
-  }
-  .capability-row-count {
-    font-size: 12px;
-    color: #374151;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
+  .cap[data-cap="Translation"]             { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+  .cap[data-cap="Code"]                    { background: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
+  .cap[data-cap="Reasoning"]               { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
+  .cap[data-cap="Classification"]          { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+  .cap[data-cap="Information Extraction"]  { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
+  .cap[data-cap="Reading Comprehension"]   { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
+  .cap[data-cap="Generation / Creative"]   { background: #fef3c7; color: #78350f; border-color: #fde68a; }
+  .cap[data-cap="Summarization"]           { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+  .cap[data-cap="Knowledge Recall"]        { background: #f3e8ff; color: #6b21a8; border-color: #e9d5ff; }
+  .cap[data-cap="Structured Output"]       { background: #cffafe; color: #155e75; border-color: #a5f3fc; }
+  .cap[data-cap="Dialogue / Conversation"] { background: #f5f5f4; color: #44403c; border-color: #e7e5e4; }
+  .cap[data-cap="Instruction Following"]   { background: #fef9c3; color: #713f12; border-color: #fde68a; }
 
   @media (max-width: 900px) {
     .notes-cell, .reason-cell, .relevancy-note { display: none; }
@@ -471,6 +459,7 @@
   <tbody id="tableBody"></tbody>
 </table>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="data.js"></script>
 <script>
   let sortCol = null;
@@ -695,47 +684,109 @@
     });
   }
 
+  const CAPABILITY_COLORS = {
+    "Reasoning":               { bg: "#fce7f3", border: "#fbcfe8", fg: "#9d174d" },
+    "Knowledge Recall":        { bg: "#f3e8ff", border: "#e9d5ff", fg: "#6b21a8" },
+    "Reading Comprehension":   { bg: "#e0e7ff", border: "#c7d2fe", fg: "#3730a3" },
+    "Information Extraction":  { bg: "#ffedd5", border: "#fed7aa", fg: "#9a3412" },
+    "Classification":          { bg: "#d1fae5", border: "#a7f3d0", fg: "#065f46" },
+    "Summarization":           { bg: "#fee2e2", border: "#fecaca", fg: "#991b1b" },
+    "Generation / Creative":   { bg: "#fef3c7", border: "#fde68a", fg: "#78350f" },
+    "Translation":             { bg: "#ede9fe", border: "#ddd6fe", fg: "#5b21b6" },
+    "Instruction Following":   { bg: "#fef9c3", border: "#fde68a", fg: "#713f12" },
+    "Code":                    { bg: "#dbeafe", border: "#bfdbfe", fg: "#1e3a8a" },
+    "Structured Output":       { bg: "#cffafe", border: "#a5f3fc", fg: "#155e75" },
+    "Dialogue / Conversation": { bg: "#f5f5f4", border: "#e7e5e4", fg: "#44403c" }
+  };
+  let capabilityChart = null;
+
   function buildCapabilityHistogram(rows) {
     const container = document.getElementById("capabilityHistogram");
-    if (!rows.length) { container.innerHTML = ""; return; }
+    if (!rows.length) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
 
     // Include rows with a pipelineStage AND Granite Libraries pre-built adapters
     // (orphans by design — no training pipeline, but their capabilities count).
     const pipelineRows = rows.filter(d => d.pipelineStage != null || d.domain === "Granite Libraries");
-    if (!pipelineRows.length) { container.innerHTML = ""; return; }
+    if (!pipelineRows.length) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
 
-    const counts = {};
+    // Per-capability: count of distinct trainable-task NAMES, plus the deduped name list for tooltips.
+    const taskNamesByCap = {};
     let totalTasks = 0;
     pipelineRows.forEach(d => {
       (d.trainableTasks || []).forEach(t => {
         if (typeof t === 'string') return;
         totalTasks += 1;
-        (t.capabilities || []).forEach(c => { counts[c] = (counts[c] || 0) + 1; });
+        const name = t.name;
+        (t.capabilities || []).forEach(c => {
+          if (!taskNamesByCap[c]) taskNamesByCap[c] = new Set();
+          taskNamesByCap[c].add(name);
+        });
       });
     });
 
-    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    if (!entries.length) { container.innerHTML = ""; return; }
-    const max = entries[0][1];
+    // Use the canonical CORE_CAPABILITIES order; sort descending by count for the chart.
+    const ALL_CAPS = (window.CORE_CAPABILITIES || []).map(c => c.key);
+    const ROWS = ALL_CAPS.map(cap => ({
+      cap,
+      count: taskNamesByCap[cap] ? taskNamesByCap[cap].size : 0,
+      tasks: taskNamesByCap[cap] ? Array.from(taskNamesByCap[cap]) : []
+    }));
+    if (!ROWS.some(r => r.count > 0)) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
 
-    const barsHtml = entries.map(([cap, n]) => {
-      const blurb = (CAPABILITY_BLURBS[cap] || "").replace(/"/g, '&quot;');
-      const pct = max > 0 ? (n / max) * 100 : 0;
-      return `<div class="capability-row" title="${blurb}">
-        <span class="capability-row-label">${cap}</span>
-        <div class="capability-row-track"><div class="capability-row-fill" style="width:${pct}%"></div></div>
-        <span class="capability-row-count">${n}</span>
-      </div>`;
-    }).join("");
+    const CHART_ROWS = ROWS.slice().sort((a, b) => b.count - a.count);
 
     container.innerHTML = `
-      <div class="capability-histogram">
-        <div class="capability-histogram-header">
-          <span class="capability-histogram-title">Core Capability Distribution — Pipeline Tasks + Granite Libraries Adapters</span>
-          <span class="capability-histogram-sub">${totalTasks} task${totalTasks !== 1 ? "s" : ""} across ${pipelineRows.length} entr${pipelineRows.length !== 1 ? "ies" : "y"} (other orphan datasets excluded)</span>
-        </div>
-        ${barsHtml}
+      <div class="chart-card">
+        <h2>Core Capabilities</h2>
+        <div class="chart-sub">Distinct trainable tasks per capability — pipeline stages + Granite Libraries adapters (${totalTasks} task slot${totalTasks !== 1 ? "s" : ""} across ${pipelineRows.length} entr${pipelineRows.length !== 1 ? "ies" : "y"})</div>
+        <div class="chart-canvas-wrap"><canvas id="chartCapabilities"></canvas></div>
       </div>`;
+
+    if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; }
+    const ctx = document.getElementById("chartCapabilities");
+    if (!ctx || !window.Chart) return;
+
+    capabilityChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: CHART_ROWS.map(r => r.cap),
+        datasets: [{
+          data: CHART_ROWS.map(r => r.count),
+          backgroundColor: CHART_ROWS.map(r => (CAPABILITY_COLORS[r.cap] || { bg: "#e5e7eb" }).bg),
+          borderColor:     CHART_ROWS.map(r => (CAPABILITY_COLORS[r.cap] || { border: "#d1d5db" }).border),
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (c) => {
+                const r = CHART_ROWS[c.dataIndex];
+                if (r.count === 0) return "0 tasks";
+                return `${r.count} · ${r.tasks.join(", ")}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, color: "#6b7280", font: { size: 11 } },
+            grid: { color: "#f1f3f5" }
+          },
+          y: {
+            ticks: { color: "#374151", font: { size: 12 } },
+            grid: { display: false }
+          }
+        }
+      }
+    });
   }
 
   function render() {
