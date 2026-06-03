@@ -94,7 +94,7 @@
     border-radius: 8px;
     border: 2px solid transparent;
     transition: border-color .15s, background .15s;
-    min-width: 180px;
+    min-width: 140px;
   }
 
   .pipeline-stage-box:hover { background: #f3f4f6; }
@@ -120,31 +120,20 @@
     margin-top: 2px;
   }
 
-  .pipeline-stage-tasks {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    align-items: center;
-    max-width: 180px;
-  }
   .pipeline-stage-task {
     font-size: 10px;
+    font-weight: 500;
     color: #4b5563;
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 3px;
-    padding: 1px 5px;
+    padding: 2px 7px;
     line-height: 1.3;
+    margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 170px;
-  }
-  .pipeline-stage-task-more {
-    font-size: 9px;
-    color: #9ca3af;
-    font-style: italic;
+    max-width: 180px;
   }
 
   .pipeline-arrow {
@@ -161,7 +150,7 @@
     padding: 8px 14px;
     border-radius: 8px;
     border: 2px dashed #e5e7eb;
-    min-width: 180px;
+    min-width: 140px;
     opacity: .6;
   }
 
@@ -484,31 +473,32 @@
   const taskClass   = { Generation: "task-generation", Reasoning: "task-reasoning", Understanding: "task-understanding", Knowledge: "task-knowledge" };
   const stageNums   = ["①","②","③","④"];
 
-  // Pipeline stage definitions per domain (including known gaps)
+  // Pipeline stage definitions per domain (including known gaps).
+  // `task` is the canonical adapter task for the stage — one task per stage.
   const PIPELINE_DEFS = {
     "NL→SQL": [
-      { stage: 1, label: "Triage" },
-      { stage: 2, label: "Generation" },
-      { stage: 3, label: "SQL Repair" },
-      { stage: 4, label: "Robustness Eval" }
+      { stage: 1, label: "Triage",          task: "Answerability Triage" },
+      { stage: 2, label: "Generation",      task: "Text-to-SQL Generation" },
+      { stage: 3, label: "SQL Repair",      task: "SQL Repair / Critique" },
+      { stage: 4, label: "Robustness Eval", task: "SQL Robustness Eval" }
     ],
     "Vulnerability": [
-      { stage: 1, label: "Detection" },
-      { stage: 2, label: "CWE Classification" },
-      { stage: 3, label: "Patch Generation" },
-      { stage: 4, label: "TTP Mapping" }
+      { stage: 1, label: "Detection",          task: "Vulnerability Detection" },
+      { stage: 2, label: "CWE Classification", task: "CWE Classification" },
+      { stage: 3, label: "Patch Generation",   task: "Patch Generation" },
+      { stage: 4, label: "TTP Mapping",        task: "CTI→MITRE Mapping" }
     ],
     "Agentic": [
-      { stage: 1, label: "Intent Classification" },
-      { stage: 2, label: "Function Calling" },
-      { stage: 3, label: "Multi-turn Planning" },
-      { stage: 4, label: "Trajectory" }
+      { stage: 1, label: "Intent Classification", task: "Tool-Use Intent Classification" },
+      { stage: 2, label: "Function Calling",      task: "Function Calling" },
+      { stage: 3, label: "Multi-turn Planning",   task: "Multi-turn Planning" },
+      { stage: 4, label: "Trajectory",            task: "Trajectory Decomposition" }
     ],
     "LLM Safety": [
-      { stage: 1, label: "Prompt Guardrail" },
-      { stage: 2, label: "Content Classification", gap: true },
-      { stage: 3, label: "Output Verification", gap: true },
-      { stage: 4, label: "Supply Chain", gap: true }
+      { stage: 1, label: "Prompt Guardrail",       task: "Jailbreak / Prompt-Injection Detection" },
+      { stage: 2, label: "Content Classification", task: "Content Safety Classification", gap: true },
+      { stage: 3, label: "Output Verification",    task: "Output Safety Verification",    gap: true },
+      { stage: 4, label: "Supply Chain",           task: "Supply Chain Risk",             gap: true }
     ]
   };
 
@@ -607,29 +597,28 @@
         const key = domain + ":" + def.stage;
         const count = stageCounts[def.stage] || 0;
 
-        // Collect distinct trainable task names for this (domain, stage)
-        const taskNames = [];
+        // Tooltip: list every distinct trainable task name from this stage's datasets
+        const allTaskNames = [];
         const seenTasks = new Set();
         CATALOG.filter(d => d.domain === domain && d.pipelineStage === def.stage).forEach(d => {
           (d.trainableTasks || []).forEach(t => {
             const n = (typeof t === 'string') ? t : t.name;
-            if (n && !seenTasks.has(n)) { seenTasks.add(n); taskNames.push(n); }
+            if (n && !seenTasks.has(n)) { seenTasks.add(n); allTaskNames.push(n); }
           });
         });
-        const MAX_TASKS = 4;
-        const visibleTasks = taskNames.slice(0, MAX_TASKS);
-        const overflowTasks = taskNames.slice(MAX_TASKS);
-        const tasksHtml = taskNames.length === 0 ? "" : `
-          <div class="pipeline-stage-tasks">
-            ${visibleTasks.map(n => `<span class="pipeline-stage-task" title="${n.replace(/"/g,'&quot;')}">${n}</span>`).join("")}
-            ${overflowTasks.length ? `<span class="pipeline-stage-task-more" title="${overflowTasks.join(' • ').replace(/"/g,'&quot;')}">+${overflowTasks.length} more</span>` : ""}
-          </div>`;
+        const taskTooltip = allTaskNames.length
+          ? `Datasets contribute: ${allTaskNames.join(' • ')}`
+          : '';
+        const taskChip = def.task
+          ? `<span class="pipeline-stage-task" title="${taskTooltip.replace(/"/g,'&quot;')}">${def.task}</span>`
+          : '';
 
         if (def.gap || count === 0) {
           const box = document.createElement("div");
           box.className = "pipeline-gap-box";
           box.innerHTML = `<span class="pipeline-stage-num">${stageNums[i]}</span>
             <span class="pipeline-stage-name" style="color:#9ca3af">${def.label}</span>
+            ${taskChip}
             <span class="pipeline-gap-label">no dataset</span>`;
           stagesEl.appendChild(box);
         } else {
@@ -640,8 +629,8 @@
           box.dataset.stage = def.stage;
           box.innerHTML = `<span class="pipeline-stage-num">${stageNums[i]}</span>
             <span class="pipeline-stage-name">${def.label}</span>
-            <span class="pipeline-stage-count">${count} dataset${count !== 1 ? "s" : ""}</span>
-            ${tasksHtml}`;
+            ${taskChip}
+            <span class="pipeline-stage-count">${count} dataset${count !== 1 ? "s" : ""}</span>`;
           box.addEventListener("click", () => {
             if (activeDiagramStage === key) {
               activeDiagramStage = "";
