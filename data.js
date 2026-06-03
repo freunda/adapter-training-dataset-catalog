@@ -58,7 +58,7 @@ window.CATALOG = [
     contextRelevancy: "High",
     contextRelevancyNote: "The schema and question together determine answerability — both are required inputs.",
     trainableTasks: [
-      { name: "SQL Answerability Triage", capabilities: ["Classification", "Reading Comprehension"] },
+      { name: "SQL Answerability Triage", capabilities: ["Classification"] },
       { name: "Unanswerable Question Detection", capabilities: ["Classification"] }
     ]
   },
@@ -86,8 +86,8 @@ window.CATALOG = [
     contextRelevancy: "High",
     contextRelevancyNote: "Schema context is required to generate syntactically valid SQL across 100 verticals.",
     trainableTasks: [
-      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output", "Reasoning"] },
-      { name: "Instruction-Tuned SQL", capabilities: ["Code", "Structured Output", "Instruction Following"] }
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Instruction-Tuned SQL", capabilities: ["Code", "Instruction Following"] }
     ]
   },
   {
@@ -114,9 +114,9 @@ window.CATALOG = [
     contextRelevancy: "High",
     contextRelevancyNote: "Database schema is mandatory — without table/column names, cross-domain SQL is impossible.",
     trainableTasks: [
-      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output", "Reasoning"] },
-      { name: "Cross-Domain SQL", capabilities: ["Code", "Structured Output", "Reasoning"] },
-      { name: "Schema Linking", capabilities: ["Information Extraction", "Reasoning"] }
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Cross-Domain SQL", capabilities: ["Code", "Reasoning"] },
+      { name: "Schema Linking", capabilities: ["Information Extraction"] }
     ]
   },
   {
@@ -143,10 +143,10 @@ window.CATALOG = [
     contextRelevancy: "High",
     contextRelevancyNote: "Large real-world DBs (avg 80 columns) require schema-linking; context is the primary constraint.",
     trainableTasks: [
-      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output", "Reasoning"] },
-      { name: "Production-Grade SQL", capabilities: ["Code", "Structured Output", "Reasoning"] },
-      { name: "Schema Linking", capabilities: ["Information Extraction", "Reasoning"] },
-      { name: "Evidence-Based SQL", capabilities: ["Code", "Reasoning", "Reading Comprehension"] }
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Production-Grade SQL", capabilities: ["Code", "Reasoning"] },
+      { name: "Schema Linking", capabilities: ["Information Extraction"] },
+      { name: "Evidence-Based SQL", capabilities: ["Reading Comprehension", "Code"] }
     ]
   },
   {
@@ -174,7 +174,7 @@ window.CATALOG = [
     contextRelevancyNote: "Single-table schema is small but still required for column name resolution.",
     trainableTasks: [
       { name: "Text-to-SQL Generation (warm-up)", capabilities: ["Code", "Structured Output"] },
-      { name: "Simple SQL Formatting", capabilities: ["Code", "Structured Output"] }
+      { name: "Simple SQL Formatting", capabilities: ["Structured Output"] }
     ]
   },
   {
@@ -288,7 +288,7 @@ window.CATALOG = [
     trainableTasks: [
       { name: "Vulnerability Detection", capabilities: ["Code", "Classification"] },
       { name: "Vulnerable-Line Localization", capabilities: ["Code", "Information Extraction"] },
-      { name: "CWE Classification (code)", capabilities: ["Code", "Classification", "Knowledge Recall"] }
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
     ]
   },
   {
@@ -316,7 +316,7 @@ window.CATALOG = [
     contextRelevancyNote: "Deduplicated real-world CVE functions; vulnerability patterns require precise code reading.",
     trainableTasks: [
       { name: "Vulnerability Detection (eval)", capabilities: ["Code", "Classification"] },
-      { name: "CWE Classification (code)", capabilities: ["Code", "Classification", "Knowledge Recall"] }
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
     ]
   },
   {
@@ -344,7 +344,7 @@ window.CATALOG = [
     contextRelevancyNote: "Function body IS the task — multi-language vulnerability patterns require reading the full code snippet.",
     trainableTasks: [
       { name: "Vulnerability Detection (multi-language)", capabilities: ["Code", "Classification"] },
-      { name: "CWE Classification (code)", capabilities: ["Code", "Classification", "Knowledge Recall"] }
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
     ]
   },
   {
@@ -372,10 +372,10 @@ window.CATALOG = [
     contextRelevancyNote: "The vulnerable function is the only source of information for generating a correct fix.",
     trainableTasks: [
       { name: "Security-Fix Commit Classification", capabilities: ["Code", "Classification"] },
-      { name: "Patch Generation", capabilities: ["Code", "Generation / Creative"] },
+      { name: "Patch Generation", capabilities: ["Code"] },
       { name: "CVE→CWE Classification (text)", capabilities: ["Classification", "Knowledge Recall"] },
       { name: "CVE Severity Triage", capabilities: ["Classification", "Knowledge Recall"] },
-      { name: "Fix Verification", capabilities: ["Code", "Reasoning", "Classification"] }
+      { name: "Fix Verification", capabilities: ["Code", "Reasoning"] }
     ]
   },
   {
@@ -464,8 +464,8 @@ window.CATALOG = [
     contextRelevancy: "Low",
     contextRelevancyNote: "The decision to call a tool is primarily driven by the user's NL request, not external context.",
     trainableTasks: [
-      { name: "Tool-Use Intent Classification", capabilities: ["Classification", "Reasoning"] },
-      { name: "Tool Hallucination Reduction", capabilities: ["Classification", "Instruction Following"] }
+      { name: "Tool-Use Intent Classification", capabilities: ["Classification"] },
+      { name: "Tool Hallucination Reduction", capabilities: ["Instruction Following"] }
     ]
   },
   {
@@ -492,9 +492,9 @@ window.CATALOG = [
     contextRelevancy: "Medium",
     contextRelevancyNote: "API specs help disambiguate function signatures, but many tool calls are inferable from NL alone.",
     trainableTasks: [
-      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following", "Knowledge Recall"] },
-      { name: "Tool Selection", capabilities: ["Classification", "Knowledge Recall"] },
-      { name: "Argument Extraction", capabilities: ["Information Extraction", "Structured Output"] }
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
     ]
   },
   {
@@ -521,9 +521,9 @@ window.CATALOG = [
     contextRelevancy: "Medium",
     contextRelevancyNote: "Multi-turn context matters for state tracking, but function specs are often redundant with the NL description.",
     trainableTasks: [
-      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation", "Reasoning"] },
-      { name: "Tool Selection", capabilities: ["Classification", "Knowledge Recall"] },
-      { name: "Conversation-State Tracking", capabilities: ["Dialogue / Conversation", "Reasoning"] }
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Conversation-State Tracking", capabilities: ["Dialogue / Conversation"] }
     ]
   },
   {
@@ -550,11 +550,11 @@ window.CATALOG = [
     contextRelevancy: "Medium",
     contextRelevancyNote: "Multi-turn dialogues with structured tool specs; specs disambiguate args but core intent is in NL.",
     trainableTasks: [
-      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Instruction Following", "Dialogue / Conversation"] },
-      { name: "Multi-step Tool Planning", capabilities: ["Reasoning", "Structured Output"] },
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] },
+      { name: "Multi-step Tool Planning", capabilities: ["Reasoning"] },
       { name: "Reasoning-trace FC (`<think>`)", capabilities: ["Reasoning", "Structured Output"] },
-      { name: "Tool Selection", capabilities: ["Classification", "Knowledge Recall"] },
-      { name: "Argument Extraction", capabilities: ["Information Extraction", "Structured Output"] }
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
     ]
   },
   {
@@ -581,9 +581,9 @@ window.CATALOG = [
     contextRelevancy: "Medium",
     contextRelevancyNote: "26.5K API pool requires specs for correct parameter typing, but coarse intent is NL-inferable.",
     trainableTasks: [
-      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following", "Knowledge Recall"] },
-      { name: "Tool Selection", capabilities: ["Classification", "Knowledge Recall"] },
-      { name: "Argument Extraction", capabilities: ["Information Extraction", "Structured Output"] }
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
     ]
   },
   {
@@ -610,9 +610,9 @@ window.CATALOG = [
     contextRelevancy: "High",
     contextRelevancyNote: "Full trajectory history (prior observations + tool results) is required to determine the next action.",
     trainableTasks: [
-      { name: "Trajectory Decomposition", capabilities: ["Reasoning", "Structured Output"] },
+      { name: "Trajectory Decomposition", capabilities: ["Reasoning"] },
       { name: "Long-Horizon Planning", capabilities: ["Reasoning"] },
-      { name: "Multi-Environment Agentic Skills", capabilities: ["Reasoning", "Structured Output"] }
+      { name: "Multi-Environment Agentic Skills", capabilities: ["Reasoning"] }
     ]
   },
 
@@ -644,7 +644,7 @@ window.CATALOG = [
     trainableTasks: [
       { name: "Jailbreak / Prompt-Injection Detection", capabilities: ["Classification"] },
       { name: "Adversarial Prompt Classification", capabilities: ["Classification"] },
-      { name: "Safety Guardrail", capabilities: ["Classification", "Instruction Following"] }
+      { name: "Safety Guardrail", capabilities: ["Classification"] }
     ]
   }
 ];
