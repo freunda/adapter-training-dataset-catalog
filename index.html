@@ -297,6 +297,64 @@
 
   #pipelineSection { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
 
+  /* Capability histogram */
+  .capability-histogram {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+  }
+  .capability-histogram-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .capability-histogram-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+  .capability-histogram-sub { font-size: 11px; color: #9ca3af; }
+  .capability-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 36px;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+  }
+  .capability-row-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .capability-row-track {
+    background: #f3f4f6;
+    border-radius: 4px;
+    height: 14px;
+    overflow: hidden;
+  }
+  .capability-row-fill {
+    background: #1a1a1a;
+    height: 100%;
+    border-radius: 4px;
+    transition: width .2s ease;
+  }
+  .capability-row-count {
+    font-size: 12px;
+    color: #374151;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   @media (max-width: 900px) {
     .notes-cell, .reason-cell, .relevancy-note { display: none; }
   }
@@ -308,6 +366,7 @@
 <p class="subtitle">HuggingFace datasets ranked by training value, baseline difficulty, existing LoRA artifacts, and pipeline coverage</p>
 
 <div id="pipelineSection"></div>
+<div id="capabilityHistogram"></div>
 
 <div class="controls">
   <div>
@@ -560,10 +619,49 @@
     });
   }
 
+  function buildCapabilityHistogram(rows) {
+    const container = document.getElementById("capabilityHistogram");
+    if (!rows.length) { container.innerHTML = ""; return; }
+
+    const counts = {};
+    let totalTasks = 0;
+    rows.forEach(d => {
+      (d.trainableTasks || []).forEach(t => {
+        if (typeof t === 'string') return;
+        totalTasks += 1;
+        (t.capabilities || []).forEach(c => { counts[c] = (counts[c] || 0) + 1; });
+      });
+    });
+
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { container.innerHTML = ""; return; }
+    const max = entries[0][1];
+
+    const barsHtml = entries.map(([cap, n]) => {
+      const blurb = (CAPABILITY_BLURBS[cap] || "").replace(/"/g, '&quot;');
+      const pct = max > 0 ? (n / max) * 100 : 0;
+      return `<div class="capability-row" title="${blurb}">
+        <span class="capability-row-label">${cap}</span>
+        <div class="capability-row-track"><div class="capability-row-fill" style="width:${pct}%"></div></div>
+        <span class="capability-row-count">${n}</span>
+      </div>`;
+    }).join("");
+
+    container.innerHTML = `
+      <div class="capability-histogram">
+        <div class="capability-histogram-header">
+          <span class="capability-histogram-title">Core Capability Distribution</span>
+          <span class="capability-histogram-sub">${totalTasks} trainable task${totalTasks !== 1 ? "s" : ""} across ${rows.length} dataset${rows.length !== 1 ? "s" : ""}</span>
+        </div>
+        ${barsHtml}
+      </div>`;
+  }
+
   function render() {
     const rows = sorted(filtered());
     const tbody = document.getElementById("tableBody");
     document.getElementById("countLabel").textContent = rows.length + " dataset" + (rows.length !== 1 ? "s" : "");
+    buildCapabilityHistogram(rows);
 
     if (rows.length === 0) {
       tbody.innerHTML = '<tr><td colspan="17" class="no-results">No datasets match the current filters.</td></tr>';
