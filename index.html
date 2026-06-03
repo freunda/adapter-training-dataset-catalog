@@ -218,6 +218,7 @@
   .domain-toolcalling { background: #cffafe; color: #155e75; }
   .domain-structured  { background: #fee2e2; color: #991b1b; }
   .domain-safety  { background: #dcfce7; color: #166534; }
+  .domain-granite     { background: #fef3c7; color: #78350f; }
   .trainable-task-badge { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; margin: 1px; white-space: nowrap; }
   .capability-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; margin: 1px; white-space: nowrap; font-weight: 600; }
 
@@ -401,6 +402,7 @@
       <option value="Safety Stack">Safety Stack</option>
       <option value="Tool-Calling">Tool-Calling</option>
       <option value="Structured Output">Structured Output</option>
+      <option value="Granite Libraries">Granite Libraries</option>
     </select>
   </div>
   <div>
@@ -484,7 +486,8 @@
     "CTI Triage": "domain-cti",
     "Safety Stack": "domain-safety",
     "Tool-Calling": "domain-toolcalling",
-    "Structured Output": "domain-structured"
+    "Structured Output": "domain-structured",
+    "Granite Libraries": "domain-granite"
   };
   const usageClass  = { training: "usage-training", eval: "usage-eval", both: "usage-both" };
   const taskClass   = { Generation: "task-generation", Reasoning: "task-reasoning", Understanding: "task-understanding", Knowledge: "task-knowledge" };
@@ -537,7 +540,8 @@
       "CTI Triage": 3,
       "Safety Stack": 4,
       "Tool-Calling": 5,
-      "Structured Output": 6
+      "Structured Output": 6,
+      "Granite Libraries": 7
     }[d] ?? 99;
   }
 
@@ -695,9 +699,14 @@
     const container = document.getElementById("capabilityHistogram");
     if (!rows.length) { container.innerHTML = ""; return; }
 
+    // Include rows with a pipelineStage AND Granite Libraries pre-built adapters
+    // (orphans by design — no training pipeline, but their capabilities count).
+    const pipelineRows = rows.filter(d => d.pipelineStage != null || d.domain === "Granite Libraries");
+    if (!pipelineRows.length) { container.innerHTML = ""; return; }
+
     const counts = {};
     let totalTasks = 0;
-    rows.forEach(d => {
+    pipelineRows.forEach(d => {
       (d.trainableTasks || []).forEach(t => {
         if (typeof t === 'string') return;
         totalTasks += 1;
@@ -722,8 +731,8 @@
     container.innerHTML = `
       <div class="capability-histogram">
         <div class="capability-histogram-header">
-          <span class="capability-histogram-title">Core Capability Distribution</span>
-          <span class="capability-histogram-sub">${totalTasks} trainable task${totalTasks !== 1 ? "s" : ""} across ${rows.length} dataset${rows.length !== 1 ? "s" : ""}</span>
+          <span class="capability-histogram-title">Core Capability Distribution — Pipeline Tasks + Granite Libraries Adapters</span>
+          <span class="capability-histogram-sub">${totalTasks} task${totalTasks !== 1 ? "s" : ""} across ${pipelineRows.length} entr${pipelineRows.length !== 1 ? "ies" : "y"} (other orphan datasets excluded)</span>
         </div>
         ${barsHtml}
       </div>`;

@@ -977,5 +977,245 @@ window.CATALOG = [
       { name: "Output Safety Classification", capabilities: ["Classification"] },
       { name: "Destructive / Exfiltration Output Detection", capabilities: ["Code", "Classification"] }
     ]
+  },
+
+  // ── Granite Libraries (pre-built adapters) ────────────────────────────────
+  // 9 adapters from the IBM Granite Libraries collection, each shipped as a built
+  // LoRA. No training dataset attached — these are existing capability adapters
+  // catalogued here so the capability map reflects what's already available.
+  // Source: https://huggingface.co/collections/ibm-granite/granite-libraries
+
+  {
+    id: "granite-query-rewrite",
+    name: "Query Rewrite (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Reading Comprehension",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 1,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Rewrites the user's query against retrieved context to make it self-contained / decontextualized for downstream retrieval or generation steps.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Listed here so the capability inventory reflects available pre-built capabilities alongside dataset-trainable ones.",
+    composability: "Pre-built — drop-in adapter for query rewriting in RAG pipelines",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Query Rewrite", capabilities: ["Reading Comprehension"] }
+    ]
+  },
+
+  {
+    id: "granite-factuality-detection",
+    name: "Factuality Detection (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Reading Comprehension",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 2,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Detects whether a generated response is factually grounded in the supplied context — passage-level entailment over the model's own output.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Distinct from Hallucination Detection: factuality checks alignment to a given passage, hallucination checks free-form claim plausibility.",
+    composability: "Pre-built — drop-in factuality verifier for RAG / grounded-generation outputs",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Factuality Detection", capabilities: ["Reading Comprehension"] }
+    ]
+  },
+
+  {
+    id: "granite-context-relevance",
+    name: "Context Relevance (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 3,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Classifies retrieved passages by relevance to the user's question — gates which chunks reach the generation step.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — retrieval-side relevance filter for RAG pipelines",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Context Relevance", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-answerability",
+    name: "Answerability Determination (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 4,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Decides whether the supplied context is sufficient to answer the user's question — drives refuse-vs-attempt routing for grounded QA.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — pre-generation gate for RAG; routes unanswerable queries to refusal / clarification",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Answerability Determination", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-hallucination-detection",
+    name: "Hallucination Detection (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 5,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Flags spans in a generated response that are not supported by retrieved context or are likely fabricated.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Complements Factuality Detection: hallucination flags unsupported claims, factuality scores grounding.",
+    composability: "Pre-built — post-generation hallucination flagger",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Hallucination Detection", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-guardian-core",
+    name: "Guardian Core (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 6,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Core safety classifier across IBM-defined harm categories — input-side and output-side guardrail.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Functional overlap with the Safety Stack flow (WildJailbreak / WildGuardMix / Aegis) but ships pre-trained.",
+    composability: "Pre-built — drop-in safety guardrail; alternative to the Safety Stack training flow",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Guardian Core", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-policy-guardrails",
+    name: "Policy Guardrails (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 7,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Policy-driven gating — classifies prompts/responses against deployer-configurable policy rules (e.g. PII, brand, jurisdiction).",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Distinct from Guardian Core: policies are deployer-configurable, harm categories are baked-in.",
+    composability: "Pre-built — configurable policy layer atop Guardian Core's harm categories",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Policy Guardrails", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-requirement-check",
+    name: "Requirement Check (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Instruction Following",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 8,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Verifies whether a response satisfies the explicit requirements stated in the prompt — instruction-adherence verifier.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — instruction-following auditor; pairs with any generation adapter as a post-hoc constraint check",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Requirement Check", capabilities: ["Instruction Following"] }
+    ]
+  },
+
+  {
+    id: "granite-query-clarification",
+    name: "Query Clarification (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Dialogue / Conversation",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 9,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Generation"],
+    taskNote: "Generates a clarifying question when the user's request is ambiguous or under-specified — multi-turn conversational repair.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — pairs with any intent-classification stage to handle the `clarify` branch (e.g. When2Call → Query Clarification)",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Query Clarification", capabilities: ["Dialogue / Conversation"] }
+    ]
   }
 ];
