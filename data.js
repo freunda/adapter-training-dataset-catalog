@@ -8,10 +8,10 @@
 //   Knowledge         — recall domain-specific facts (API specs, MITRE techniques, DB schemas)
 //
 // Pipeline stages per domain:
-//   NL→SQL:      1-Triage  →  2-Generation  →  3-Repair   →  4-Robustness Eval
-//   Vulnerability: 1-Detection  →  2-CWE Classification  →  3-Patch Gen  →  4-TTP Mapping
-//   Agentic:     1-Intent  →  2-Function Call  →  3-Multi-turn  →  4-Trajectory
-//   LLM Safety:  1-Prompt Guardrail  →  2-Content Classification  →  3-Output Verification  →  4-Supply Chain
+//   NL→SQL:        1-Format/Syntax Pretrain  →  2-Generation  →  3-SQL Repair  →  4-Robustness Eval
+//   Vulnerability: 1-Detection  →  2-CWE Classification  →  3-Line-Level Localization  →  4-TTP Mapping
+//   Agentic:       1-Input Guardrail  →  2-Intent  →  3-Function Calling  →  4-Multi-step Planning  →  5-Output Verification
+//                  (LLM Safety folded into Agentic stages 1 and 5 — safety adapters bracket the agent loop.)
 //
 // Core Capability Categories — what fundamental LLM capability each trainable task exercises.
 // Each trainableTasks entry is {name, capabilities: [...]}; capabilities are drawn from CORE_CAPABILITIES below.
@@ -51,14 +51,14 @@ window.CATALOG = [
     taskCategories: ["Generation"],
     taskNote: "Pure SQL generation from NL + schema. Synthetic — no complex reasoning required; strong signal for output format and syntax.",
     notes: "Largest clean synthetic SQL corpus across 100 verticals — but spot-checks reveal a non-trivial fraction of broken gold rows: prompt↔SQL semantic mismatches (filter-by-author when prompt asks for topic), invalid SQL (`MAX(COUNT(*))` directly in SELECT, HAVING without GROUP BY), filter-vs-data mismatches (`country = 'Africa'` over country-name column), and gold SQL referencing tables not defined in the row's `sql_context` DDL. Pre-training filter is mandatory: instantiate each row's `sql_context` as in-memory SQLite/DuckDB, execute the gold SQL, drop rows that fail to parse, fail to execute, or reference undefined tables. Expect to lose ≥10% of rows. Evaluate on Spider/BIRD, not on this set's own test split.",
-    composability: "High — pairs with Spider/BIRD eval",
-    pipelineStage: 2,
-    pipelineStageLabel: "Generation",
+    composability: "Stage 1 — bulk format/syntax pretrain before Spider/BIRD generation training",
+    pipelineStage: 1,
+    pipelineStageLabel: "Format & Syntax Pretraining",
     avgContextTokens: 500,
     contextRelevancy: "High",
     contextRelevancyNote: "Schema context is required to generate syntactically valid SQL across 100 verticals.",
     trainableTasks: [
-      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Synthetic SQL Pretraining", capabilities: ["Code", "Structured Output"] },
       { name: "Instruction-Tuned SQL", capabilities: ["Code", "Instruction Following"] }
     ]
   },
@@ -370,7 +370,7 @@ window.CATALOG = [
     taskNote: "Model must understand the user's intent and reason about whether tool use is appropriate — a meta-level capability distinct from knowing how to call tools.",
     notes: "Use ONLY the `train_sft` and `train_pref` configs. The `test` config is perturbed BFCL v2 Live (held-out param / removed tool / swapped tool, with `orig_question` carrying the pre-perturbation BFCL text) — training on it contaminates every BFCL leaderboard number. Treat the `test` config as eval-only or skip it entirely. Format gotchas: `tools` is a list of JSON-encoded strings (needs `json.loads(t)` per element); `train_pref` wraps tool calls as `<TOOLCALL>[{…}]</TOOLCALL>` strings (re-template to base markers); `train_sft` is one-sided (refusal/clarify only) — pair with `train_pref.chosen_response` for the positive call action. Train rows derive from xLAM with Mixtral-8x22B perturbations, so dedup against raw xLAM by `orig_query` hash if mixing.",
     composability: "Tool-use intent classification stage (pipeline gating)",
-    pipelineStage: 1,
+    pipelineStage: 2,
     pipelineStageLabel: "Intent Classification",
     avgContextTokens: 200,
     contextRelevancy: "Low",
@@ -398,7 +398,7 @@ window.CATALOG = [
     taskNote: "Model must know API signatures (Knowledge) and generate correctly structured function calls with right parameters (Generation).",
     notes: "Primary training corpus for function calling adapters. The xLAM-*-fc-r models are trained on this and hold top BFCL positions. Official QLoRA recipe available.",
     composability: "Primary training data — foundation for function-calling adapter",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 414,
     contextRelevancy: "Medium",
@@ -427,7 +427,7 @@ window.CATALOG = [
     taskNote: "Multi-turn conversations require tracking context across turns (Reasoning) and generating correct function calls (Generation).",
     notes: "Most widely reused function-calling training dataset. 96+ LoRA models trace their training lineage here. CC BY-SA license is clean for publication.",
     composability: "Solid warm-up / augmentation layer",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 512,
     contextRelevancy: "Medium",
@@ -455,18 +455,16 @@ window.CATALOG = [
     taskCategories: ["Generation", "Reasoning", "Knowledge"],
     taskNote: "Multi-turn function calling with optional `<think>` reasoning traces per assistant turn. Built from a function-compatibility graph + multi-agent rollout, not from re-filtered OSS sources.",
     notes: "ONLY load the `graph_syn_datasets` split (163k synthetic). The `open_datasets` split (205k) is excluded — it re-issues filtered xLAM/Glaive/ToolACE/APIGen-MT rows, causing 2× weighting under naive union AND inheriting CC-BY-NC contagion from the APIGen-MT slice with no source-of-row metadata to subset out. Caveats for the synthetic split: (1) trajectories are fanned into `(prefix, next-turn)` rows with no `trajectory_id` — group by longest-common-prefix before splitting train/val to avoid prefix leakage; (2) `<think>` markers are non-standard for Granite — route to base reasoning channel or strip; (3) reasoning-trace teacher undisclosed.",
-    composability: "Multi-turn FC + reasoning-trace adapter source",
-    pipelineStage: 2,
-    pipelineStageLabel: "Function Calling",
+    composability: "Stage 4 — multi-step planning + reasoning-trace adapter built atop Stage 3 function-calling base",
+    pipelineStage: 4,
+    pipelineStageLabel: "Multi-step Tool Planning",
     avgContextTokens: 500,
     contextRelevancy: "Medium",
     contextRelevancyNote: "Multi-turn dialogues with structured tool specs; specs disambiguate args but core intent is in NL.",
     trainableTasks: [
-      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] },
       { name: "Multi-step Tool Planning", capabilities: ["Reasoning"] },
       { name: "Reasoning-trace FC (`<think>`)", capabilities: ["Reasoning", "Structured Output"] },
-      { name: "Tool Selection", capabilities: ["Classification"] },
-      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] }
     ]
   },
   {
@@ -487,7 +485,7 @@ window.CATALOG = [
     taskNote: "Diverse API pool (26.5k) teaches API knowledge breadth; output is structured function calls.",
     notes: "Strong training data behind top BFCL results. ToolACE-8B holds 89.17% on BFCL-v1. Partially public on HF.",
     composability: "Excellent augmentation for function calling",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 400,
     contextRelevancy: "Medium",
@@ -515,9 +513,9 @@ window.CATALOG = [
     taskCategories: ["Reasoning", "Generation"],
     taskNote: "Multi-environment trajectories teach long-horizon planning — sequences of tool calls across diverse environments.",
     notes: "Small (1.9K) but covers 6 diverse environments. AgentBench held-out eval (8 environments). LoRA-portable from the FFT checkpoint.",
-    composability: "Stage 4 — long-horizon planning atop Stage 2/3 function-calling adapters",
+    composability: "Stage 4 — long-horizon trajectory planning atop Stage 3 function-calling adapter",
     pipelineStage: 4,
-    pipelineStageLabel: "Trajectory Decomposition",
+    pipelineStageLabel: "Multi-step Tool Planning",
     avgContextTokens: 1200,
     contextRelevancy: "High",
     contextRelevancyNote: "Full trajectory history (prior observations + tool results) is required to determine the next action.",
@@ -528,14 +526,12 @@ window.CATALOG = [
     ]
   },
 
-  // ── LLM Safety ─────────────────────────────────────────────────────────────
-
   {
     id: "wildjailbreak",
     name: "WildJailbreak",
     hf: "allenai/wildjailbreak",
-    domain: "LLM Safety",
-    subdomain: "Jailbreak Detection",
+    domain: "Agentic",
+    subdomain: "Input Guardrail",
     usage: "both",
     license: "ODC-BY",
     size: "262k examples (vanilla + adversarial × harmful + benign; 4-cell design)",
@@ -547,9 +543,9 @@ window.CATALOG = [
     taskCategories: ["Understanding"],
     taskNote: "Binary classifier: is this prompt a jailbreak/injection attempt? The 4-cell design (vanilla/adversarial × harmful/benign) is critical — training on all 4 cells prevents over-refusing benign-edgy prompts.",
     notes: "Primary dataset for aLoRA jailbreak guardrail (BARHA task-12). 4-cell design enables a low false-positive rate on benign-but-edgy inputs, which is the key failure mode of simpler approaches. AllenAI WildGuard model trained on this achieves 97.7% F1.",
-    composability: "Stage 1 — input-side guardrail; runs against every inbound prompt in parallel with other safety adapters (toxicity, PII, topic-drift)",
+    composability: "Stage 1 — input-side guardrail bracketing the agent loop; runs on every inbound prompt before tool intent classification",
     pipelineStage: 1,
-    pipelineStageLabel: "Prompt Guardrail",
+    pipelineStageLabel: "Input Guardrail",
     avgContextTokens: 150,
     contextRelevancy: "High",
     contextRelevancyNote: "The full prompt text is the only signal — adversarial intent is encoded in phrasing, persona framing, and encoding tricks.",
@@ -557,6 +553,63 @@ window.CATALOG = [
       { name: "Jailbreak / Prompt-Injection Detection", capabilities: ["Classification"] },
       { name: "Adversarial Prompt Classification", capabilities: ["Classification"] },
       { name: "Safety Guardrail", capabilities: ["Classification"] }
+    ]
+  },
+  {
+    id: "wildguardmix",
+    name: "WildGuardMix",
+    hf: "allenai/wildguardmix",
+    domain: "Agentic",
+    subdomain: "Output Verification",
+    usage: "both",
+    license: "ODC-BY (training); WildGuardTest is gated behind contact-email request",
+    size: "~92k items: 86,759 train (wildguardtrain) + 1,725 eval (wildguardtest); 3 task heads (prompt-harm / response-harm / response-refusal)",
+    bestBaseline: "allenai/wildguard: 97.7% F1 prompt-harm, 87.4% F1 response-harm, 88.9% F1 refusal — outperforms GPT-4 across all three",
+    loraArtifacts: "allenai/wildguard (Mistral-7B FFT, LoRA-portable)",
+    tier: 1,
+    rank: 2,
+    rankReason: "Multi-head output safety classifier — covers prompt harm, response harm, and refusal correctness in one corpus; pairs naturally with WildJailbreak (same lab, complementary inputs/outputs)",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Three classification heads share the same example: (1) is the prompt harmful, (2) is the model's response harmful, (3) did the model refuse. Stage 5 uses heads (2) and (3) to gate agent outputs.",
+    notes: "Best open dataset for agent output verification. Use the response-harm head to flag harmful tool-call outputs and the response-refusal head to verify the agent refused when it should have. WildGuardTest is gated (contact AllenAI); train split is open.",
+    composability: "Stage 5 — verifies agent responses post-generation; pairs with WildJailbreak Stage 1 for end-to-end safety",
+    pipelineStage: 5,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 250,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Both prompt and response text are required to judge harm and refusal correctness.",
+    trainableTasks: [
+      { name: "Response Harm Classification", capabilities: ["Classification"] },
+      { name: "Refusal Correctness", capabilities: ["Classification"] },
+      { name: "Prompt Harm Classification", capabilities: ["Classification"] }
+    ]
+  },
+  {
+    id: "aegis-2.0",
+    name: "Aegis-AI-Content-Safety 2.0",
+    hf: "nvidia/Aegis-AI-Content-Safety-Dataset-2.0",
+    domain: "Agentic",
+    subdomain: "Output Verification",
+    usage: "training",
+    license: "CC BY 4.0",
+    size: "~33.4k human-annotated prompt+response pairs across 13 harm categories (Aegis 2.0 taxonomy)",
+    bestBaseline: "nvidia/Llama-Guard-3-8B fine-tuned on Aegis-2.0; competitive with WildGuard on response-harm classification",
+    loraArtifacts: "nvidia/Llama-3.1-Nemoguard-8B-ContentSafety (FFT, LoRA-portable)",
+    tier: 1,
+    rank: 3,
+    rankReason: "Fine-grained 13-category harm taxonomy (vs WildGuard's binary heads); CC-BY-4.0 license; complements WildGuardMix with category-level supervision",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Multi-class harm taxonomy (violence, sexual content, hate, self-harm, illegal, privacy, etc.). Trains category-aware safety classifiers — useful when downstream policy needs to know *which* harm category triggered a refusal, not just yes/no.",
+    notes: "Mistral-7B-v0.1 generated responses, human annotated. Pairs cleanly with WildGuardMix: WildGuard for binary harm + refusal heads, Aegis for fine-grained category labels. Use both for production safety stacks.",
+    composability: "Stage 5 — fine-grained content classification head; layered on top of WildGuardMix binary head",
+    pipelineStage: 5,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 300,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Response text is the primary signal; category labels require reading the full response.",
+    trainableTasks: [
+      { name: "Multi-class Harm Categorization", capabilities: ["Classification"] },
+      { name: "Response Harm Classification", capabilities: ["Classification"] }
     ]
   }
 ];
