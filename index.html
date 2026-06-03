@@ -411,10 +411,16 @@
       { stage: 2, label: "Function Calling" },
       { stage: 3, label: "Multi-turn Planning" },
       { stage: 4, label: "Trajectory" }
+    ],
+    "LLM Safety": [
+      { stage: 1, label: "Prompt Guardrail" },
+      { stage: 2, label: "Content Classification", gap: true },
+      { stage: 3, label: "Output Verification", gap: true },
+      { stage: 4, label: "Supply Chain", gap: true }
     ]
   };
 
-  function domainOrder(d) { return { "NL→SQL": 0, "Vulnerability": 1, "Agentic": 2 }[d] ?? 99; }
+  function domainOrder(d) { return { "NL→SQL": 0, "Vulnerability": 1, "Agentic": 2, "LLM Safety": 3 }[d] ?? 99; }
 
   function filtered() {
     const domain = document.getElementById("filterDomain").value;
