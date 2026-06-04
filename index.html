@@ -94,7 +94,7 @@
     border-radius: 8px;
     border: 2px solid transparent;
     transition: border-color .15s, background .15s;
-    min-width: 140px;
+    min-width: 110px;
   }
 
   .pipeline-stage-box:hover { background: #f3f4f6; }
@@ -120,22 +120,6 @@
     margin-top: 2px;
   }
 
-  .pipeline-stage-task {
-    font-size: 10px;
-    font-weight: 500;
-    color: #4b5563;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 3px;
-    padding: 2px 7px;
-    line-height: 1.3;
-    margin-top: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
-  }
-
   .pipeline-arrow {
     font-size: 16px;
     color: #d1d5db;
@@ -150,7 +134,7 @@
     padding: 8px 14px;
     border-radius: 8px;
     border: 2px dashed #e5e7eb;
-    min-width: 140px;
+    min-width: 110px;
     opacity: .6;
   }
 
@@ -210,17 +194,11 @@
     font-weight: 600;
   }
 
-  .domain-sql         { background: #dbeafe; color: #1e40af; }
-  .domain-vuln        { background: #fce7f3; color: #9d174d; }
-  .domain-agentic     { background: #ede9fe; color: #5b21b6; }
-  .domain-cti         { background: #fef3c7; color: #92400e; }
-  .domain-safety      { background: #dcfce7; color: #166534; }
-  .domain-toolcalling { background: #cffafe; color: #155e75; }
-  .domain-structured  { background: #fee2e2; color: #991b1b; }
+  .domain-sql     { background: #dbeafe; color: #1e40af; }
+  .domain-vuln    { background: #fce7f3; color: #9d174d; }
+  .domain-agentic { background: #ede9fe; color: #5b21b6; }
   .domain-safety  { background: #dcfce7; color: #166534; }
-  .domain-granite     { background: #fef3c7; color: #78350f; }
   .trainable-task-badge { display: inline-block; font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; margin: 1px; white-space: nowrap; }
-  .capability-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; margin: 1px; white-space: nowrap; font-weight: 600; }
 
   .usage-badge {
     display: inline-block;
@@ -249,7 +227,6 @@
   .stage-2 { background: #dbeafe; color: #1e40af; }
   .stage-3 { background: #d1fae5; color: #065f46; }
   .stage-4 { background: #ede9fe; color: #5b21b6; }
-  .stage-5 { background: #dcfce7; color: #166534; }
 
   /* Context relevancy badges */
   .relevancy-badge {
@@ -319,52 +296,6 @@
 
   #pipelineSection { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
 
-  /* Capability histogram — chart card style (matches adapter-taxonomy) */
-  .chart-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    padding: 14px 16px 12px;
-    margin-bottom: 20px;
-    display: flex;
-    flex-direction: column;
-  }
-  .chart-card h2 {
-    font-size: 13px;
-    font-weight: 600;
-    color: #111;
-    margin-bottom: 4px;
-  }
-  .chart-card .chart-sub {
-    font-size: 11px;
-    color: #6b7280;
-    margin-bottom: 8px;
-  }
-  .chart-canvas-wrap { position: relative; height: 380px; }
-
-  .cap {
-    display: inline-block;
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #fef3c7;
-    color: #78350f;
-    border: 1px solid #fde68a;
-    white-space: nowrap;
-  }
-  .cap[data-cap="Translation"]             { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
-  .cap[data-cap="Code"]                    { background: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
-  .cap[data-cap="Reasoning"]               { background: #fce7f3; color: #9d174d; border-color: #fbcfe8; }
-  .cap[data-cap="Classification"]          { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
-  .cap[data-cap="Information Extraction"]  { background: #ffedd5; color: #9a3412; border-color: #fed7aa; }
-  .cap[data-cap="Reading Comprehension"]   { background: #e0e7ff; color: #3730a3; border-color: #c7d2fe; }
-  .cap[data-cap="Generation / Creative"]   { background: #fef3c7; color: #78350f; border-color: #fde68a; }
-  .cap[data-cap="Summarization"]           { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
-  .cap[data-cap="Knowledge Recall"]        { background: #f3e8ff; color: #6b21a8; border-color: #e9d5ff; }
-  .cap[data-cap="Structured Output"]       { background: #cffafe; color: #155e75; border-color: #a5f3fc; }
-  .cap[data-cap="Dialogue / Conversation"] { background: #f5f5f4; color: #44403c; border-color: #e7e5e4; }
-  .cap[data-cap="Instruction Following"]   { background: #fef9c3; color: #713f12; border-color: #fde68a; }
-
   @media (max-width: 900px) {
     .notes-cell, .reason-cell, .relevancy-note { display: none; }
   }
@@ -376,7 +307,6 @@
 <p class="subtitle">HuggingFace datasets ranked by training value, baseline difficulty, existing LoRA artifacts, and pipeline coverage</p>
 
 <div id="pipelineSection"></div>
-<div id="capabilityHistogram"></div>
 
 <div class="controls">
   <div>
@@ -386,11 +316,7 @@
       <option value="NL→SQL">NL→SQL</option>
       <option value="Vulnerability">Vulnerability</option>
       <option value="Agentic">Agentic</option>
-      <option value="CTI Triage">CTI Triage</option>
-      <option value="Safety Stack">Safety Stack</option>
-      <option value="Tool-Calling">Tool-Calling</option>
-      <option value="Structured Output">Structured Output</option>
-      <option value="Granite Libraries">Granite Libraries</option>
+      <option value="LLM Safety">LLM Safety</option>
     </select>
   </div>
   <div>
@@ -428,7 +354,6 @@
       <option value="2">Stage 2</option>
       <option value="3">Stage 3</option>
       <option value="4">Stage 4</option>
-      <option value="5">Stage 5</option>
     </select>
   </div>
   <span class="count" id="countLabel"></span>
@@ -445,7 +370,6 @@
       <th data-col="usage">Usage</th>
       <th data-col="taskCategories">Task Categories</th>
       <th data-col="trainableTasks">Trainable Tasks</th>
-      <th data-col="coreCapabilities">Core Capabilities</th>
       <th data-col="avgContextTokens">Avg Context</th>
       <th data-col="contextRelevancy">Context Relevancy</th>
       <th data-col="size">Size</th>
@@ -459,7 +383,6 @@
   <tbody id="tableBody"></tbody>
 </table>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="data.js"></script>
 <script>
   let sortCol = null;
@@ -468,71 +391,40 @@
   let activeStageFilter = "";  // from dropdown
   let activeDiagramStage = ""; // from pipeline diagram click (domain:stage)
 
-  const domainClass = {
-    "NL→SQL": "domain-sql",
-    "Vulnerability": "domain-vuln",
-    "Agentic": "domain-agentic",
-    "CTI Triage": "domain-cti",
-    "Safety Stack": "domain-safety",
-    "Tool-Calling": "domain-toolcalling",
-    "Structured Output": "domain-structured",
-    "Granite Libraries": "domain-granite"
-  };
+  const domainClass = { "NL→SQL": "domain-sql", "Vulnerability": "domain-vuln", "Agentic": "domain-agentic", "LLM Safety": "domain-safety" };
   const usageClass  = { training: "usage-training", eval: "usage-eval", both: "usage-both" };
   const taskClass   = { Generation: "task-generation", Reasoning: "task-reasoning", Understanding: "task-understanding", Knowledge: "task-knowledge" };
-  const stageNums   = ["①","②","③","④","⑤"];
+  const stageNums   = ["①","②","③","④"];
 
-  // Pipeline stage definitions per domain (including known gaps).
-  // `task` is the canonical adapter task for the stage — one task per stage.
+  // Pipeline stage definitions per domain (including known gaps)
   const PIPELINE_DEFS = {
     "NL→SQL": [
-      { stage: 1, label: "Intent Classification", task: "SQL-Emit Intent Classification" },
-      { stage: 2, label: "Generation",            task: "Text-to-SQL Generation" },
-      { stage: 3, label: "Output Verification",   task: "SQL Output Safety Classification" }
+      { stage: 1, label: "Triage" },
+      { stage: 2, label: "Generation" },
+      { stage: 3, label: "SQL Repair" },
+      { stage: 4, label: "Robustness Eval" }
     ],
     "Vulnerability": [
-      { stage: 1, label: "Detection",          task: "Vulnerability Detection" },
-      { stage: 2, label: "CWE Classification", task: "CWE Classification (code)" }
+      { stage: 1, label: "Detection" },
+      { stage: 2, label: "CWE Classification" },
+      { stage: 3, label: "Patch Generation" },
+      { stage: 4, label: "TTP Mapping" }
     ],
     "Agentic": [
-      { stage: 1, label: "Input Guardrail",          task: "Jailbreak / Prompt-Injection Detection" },
-      { stage: 2, label: "Intent Classification",    task: "Tool-Use Intent Classification" },
-      { stage: 3, label: "Function Calling",         task: "Function Calling" },
-      { stage: 4, label: "Multi-step Tool Planning", task: "Multi-step Tool Planning" },
-      { stage: 5, label: "Output Verification",      task: "Response Safety / Refusal" }
+      { stage: 1, label: "Intent Classification" },
+      { stage: 2, label: "Function Calling" },
+      { stage: 3, label: "Multi-turn Planning" },
+      { stage: 4, label: "Trajectory" }
     ],
-    "CTI Triage": [
-      { stage: 1, label: "CVE→CWE Classification", task: "CVE→CWE Mapping" },
-      { stage: 2, label: "TTP Mapping",            task: "CTI→MITRE Technique Mapping" }
-    ],
-    "Safety Stack": [
-      { stage: 1, label: "Input Guardrail",      task: "Jailbreak / Prompt-Injection Detection" },
-      { stage: 2, label: "Output Verification",  task: "Response Harm Classification" },
-      { stage: 3, label: "Harm Categorization",  task: "Multi-class Harm Categorization" }
-    ],
-    "Tool-Calling": [
-      { stage: 1, label: "Intent Classification", task: "Tool-Use Intent Classification" },
-      { stage: 2, label: "Function Calling",      task: "Function Calling (multi-turn)" }
-    ],
-    "Structured Output": [
-      { stage: 1, label: "FC Pretrain",          task: "Function Calling (multi-turn)" },
-      { stage: 2, label: "SQL Specialization",   task: "Text-to-SQL Generation" },
-      { stage: 3, label: "Output Validation",    task: "Output Safety Classification" }
+    "LLM Safety": [
+      { stage: 1, label: "Prompt Guardrail" },
+      { stage: 2, label: "Output Verification" },
+      { stage: 3, label: "Harm Categorization" },
+      { stage: 4, label: "Supply Chain", gap: true }
     ]
   };
 
-  function domainOrder(d) {
-    return {
-      "NL→SQL": 0,
-      "Vulnerability": 1,
-      "Agentic": 2,
-      "CTI Triage": 3,
-      "Safety Stack": 4,
-      "Tool-Calling": 5,
-      "Structured Output": 6,
-      "Granite Libraries": 7
-    }[d] ?? 99;
-  }
+  function domainOrder(d) { return { "NL→SQL": 0, "Vulnerability": 1, "Agentic": 2, "LLM Safety": 3 }[d] ?? 99; }
 
   function filtered() {
     const domain = document.getElementById("filterDomain").value;
@@ -573,26 +465,10 @@
     return "~" + n;
   }
 
-  const CAPABILITY_BLURBS = (window.CORE_CAPABILITIES || []).reduce((m, c) => (m[c.key] = c.blurb, m), {});
-
-  function capabilityBadges(tasks) {
-    if (!tasks) return "";
-    const seen = new Set();
-    (tasks || []).forEach(t => {
-      if (typeof t === 'string') return;
-      (t.capabilities || []).forEach(c => seen.add(c));
-    });
-    return Array.from(seen).map(c => {
-      const blurb = CAPABILITY_BLURBS[c] || "";
-      const safeBlurb = blurb.replace(/"/g, '&quot;');
-      return `<span class="capability-badge" title="${safeBlurb}">${c}</span>`;
-    }).join("");
-  }
-
   function buildPipelineDiagrams() {
     const section = document.getElementById("pipelineSection");
     const activeDomain = document.getElementById("filterDomain").value;
-    const domains = activeDomain ? [activeDomain] : Object.keys(PIPELINE_DEFS);
+    const domains = activeDomain ? [activeDomain] : ["NL→SQL", "Vulnerability", "Agentic", "LLM Safety"];
     section.innerHTML = "";
 
     domains.forEach(domain => {
@@ -627,28 +503,11 @@
         const key = domain + ":" + def.stage;
         const count = stageCounts[def.stage] || 0;
 
-        // Tooltip: list every distinct trainable task name from this stage's datasets
-        const allTaskNames = [];
-        const seenTasks = new Set();
-        CATALOG.filter(d => d.domain === domain && d.pipelineStage === def.stage).forEach(d => {
-          (d.trainableTasks || []).forEach(t => {
-            const n = (typeof t === 'string') ? t : t.name;
-            if (n && !seenTasks.has(n)) { seenTasks.add(n); allTaskNames.push(n); }
-          });
-        });
-        const taskTooltip = allTaskNames.length
-          ? `Datasets contribute: ${allTaskNames.join(' • ')}`
-          : '';
-        const taskChip = def.task
-          ? `<span class="pipeline-stage-task" title="${taskTooltip.replace(/"/g,'&quot;')}">${def.task}</span>`
-          : '';
-
         if (def.gap || count === 0) {
           const box = document.createElement("div");
           box.className = "pipeline-gap-box";
           box.innerHTML = `<span class="pipeline-stage-num">${stageNums[i]}</span>
             <span class="pipeline-stage-name" style="color:#9ca3af">${def.label}</span>
-            ${taskChip}
             <span class="pipeline-gap-label">no dataset</span>`;
           stagesEl.appendChild(box);
         } else {
@@ -659,7 +518,6 @@
           box.dataset.stage = def.stage;
           box.innerHTML = `<span class="pipeline-stage-num">${stageNums[i]}</span>
             <span class="pipeline-stage-name">${def.label}</span>
-            ${taskChip}
             <span class="pipeline-stage-count">${count} dataset${count !== 1 ? "s" : ""}</span>`;
           box.addEventListener("click", () => {
             if (activeDiagramStage === key) {
@@ -684,119 +542,13 @@
     });
   }
 
-  const CAPABILITY_COLORS = {
-    "Reasoning":               { bg: "#fce7f3", border: "#fbcfe8", fg: "#9d174d" },
-    "Knowledge Recall":        { bg: "#f3e8ff", border: "#e9d5ff", fg: "#6b21a8" },
-    "Reading Comprehension":   { bg: "#e0e7ff", border: "#c7d2fe", fg: "#3730a3" },
-    "Information Extraction":  { bg: "#ffedd5", border: "#fed7aa", fg: "#9a3412" },
-    "Classification":          { bg: "#d1fae5", border: "#a7f3d0", fg: "#065f46" },
-    "Summarization":           { bg: "#fee2e2", border: "#fecaca", fg: "#991b1b" },
-    "Generation / Creative":   { bg: "#fef3c7", border: "#fde68a", fg: "#78350f" },
-    "Translation":             { bg: "#ede9fe", border: "#ddd6fe", fg: "#5b21b6" },
-    "Instruction Following":   { bg: "#fef9c3", border: "#fde68a", fg: "#713f12" },
-    "Code":                    { bg: "#dbeafe", border: "#bfdbfe", fg: "#1e3a8a" },
-    "Structured Output":       { bg: "#cffafe", border: "#a5f3fc", fg: "#155e75" },
-    "Dialogue / Conversation": { bg: "#f5f5f4", border: "#e7e5e4", fg: "#44403c" }
-  };
-  let capabilityChart = null;
-
-  function buildCapabilityHistogram(rows) {
-    const container = document.getElementById("capabilityHistogram");
-    if (!rows.length) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
-
-    // Include rows with a pipelineStage AND Granite Libraries pre-built adapters
-    // (orphans by design — no training pipeline, but their capabilities count).
-    const pipelineRows = rows.filter(d => d.pipelineStage != null || d.domain === "Granite Libraries");
-    if (!pipelineRows.length) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
-
-    // Per-capability: count of distinct trainable-task NAMES, plus the deduped name list for tooltips.
-    const taskNamesByCap = {};
-    let totalTasks = 0;
-    pipelineRows.forEach(d => {
-      (d.trainableTasks || []).forEach(t => {
-        if (typeof t === 'string') return;
-        totalTasks += 1;
-        const name = t.name;
-        (t.capabilities || []).forEach(c => {
-          if (!taskNamesByCap[c]) taskNamesByCap[c] = new Set();
-          taskNamesByCap[c].add(name);
-        });
-      });
-    });
-
-    // Use the canonical CORE_CAPABILITIES order; sort descending by count for the chart.
-    const ALL_CAPS = (window.CORE_CAPABILITIES || []).map(c => c.key);
-    const ROWS = ALL_CAPS.map(cap => ({
-      cap,
-      count: taskNamesByCap[cap] ? taskNamesByCap[cap].size : 0,
-      tasks: taskNamesByCap[cap] ? Array.from(taskNamesByCap[cap]) : []
-    }));
-    if (!ROWS.some(r => r.count > 0)) { container.innerHTML = ""; if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; } return; }
-
-    const CHART_ROWS = ROWS.slice().sort((a, b) => b.count - a.count);
-
-    container.innerHTML = `
-      <div class="chart-card">
-        <h2>Core Capabilities</h2>
-        <div class="chart-sub">Distinct trainable tasks per capability — pipeline stages + Granite Libraries adapters (${totalTasks} task slot${totalTasks !== 1 ? "s" : ""} across ${pipelineRows.length} entr${pipelineRows.length !== 1 ? "ies" : "y"})</div>
-        <div class="chart-canvas-wrap"><canvas id="chartCapabilities"></canvas></div>
-      </div>`;
-
-    if (capabilityChart) { capabilityChart.destroy(); capabilityChart = null; }
-    const ctx = document.getElementById("chartCapabilities");
-    if (!ctx || !window.Chart) return;
-
-    capabilityChart = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: CHART_ROWS.map(r => r.cap),
-        datasets: [{
-          data: CHART_ROWS.map(r => r.count),
-          backgroundColor: CHART_ROWS.map(r => (CAPABILITY_COLORS[r.cap] || { bg: "#e5e7eb" }).bg),
-          borderColor:     CHART_ROWS.map(r => (CAPABILITY_COLORS[r.cap] || { border: "#d1d5db" }).border),
-          borderWidth: 1,
-          borderRadius: 4
-        }]
-      },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (c) => {
-                const r = CHART_ROWS[c.dataIndex];
-                if (r.count === 0) return "0 tasks";
-                return `${r.count} · ${r.tasks.join(", ")}`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            beginAtZero: true,
-            ticks: { stepSize: 1, color: "#6b7280", font: { size: 11 } },
-            grid: { color: "#f1f3f5" }
-          },
-          y: {
-            ticks: { color: "#374151", font: { size: 12 } },
-            grid: { display: false }
-          }
-        }
-      }
-    });
-  }
-
   function render() {
     const rows = sorted(filtered());
     const tbody = document.getElementById("tableBody");
     document.getElementById("countLabel").textContent = rows.length + " dataset" + (rows.length !== 1 ? "s" : "");
-    buildCapabilityHistogram(rows);
 
     if (rows.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="17" class="no-results">No datasets match the current filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="16" class="no-results">No datasets match the current filters.</td></tr>';
       return;
     }
 
@@ -807,7 +559,7 @@
     rows.forEach(d => {
       if (!showingSingleDomain && d.domain !== lastDomain) {
         lastDomain = d.domain;
-        html += `<tr><td colspan="17" class="domain-section">${d.domain}</td></tr>`;
+        html += `<tr><td colspan="16" class="domain-section">${d.domain}</td></tr>`;
       }
       const hfUrl = `https://huggingface.co/datasets/${d.hf}`;
       const taskBadges = (d.taskCategories || [])
@@ -830,8 +582,7 @@
         <td>${stageBadge}</td>
         <td><span class="usage-badge ${usageClass[d.usage]}">${d.usage}</span></td>
         <td style="max-width:160px"><div class="task-badges">${taskBadges}</div>${d.taskNote ? `<div class="task-note">${d.taskNote}</div>` : ""}</td>
-        <td style="max-width:180px"><div class="task-badges">${(d.trainableTasks||[]).map(t=>`<span class="trainable-task-badge">${typeof t === 'string' ? t : t.name}</span>`).join("")}</div></td>
-        <td style="max-width:180px"><div class="task-badges">${capabilityBadges(d.trainableTasks)}</div></td>
+        <td style="max-width:180px"><div class="task-badges">${(d.trainableTasks||[]).map(t=>`<span class="trainable-task-badge">${t}</span>`).join("")}</div></td>
         <td class="ctx-tokens">${fmtTokens(d.avgContextTokens)}</td>
         <td class="relevancy-cell">${relevancyBadge}${relevancyNote}</td>
         <td style="font-size:12px;max-width:140px">${d.size}</td>
