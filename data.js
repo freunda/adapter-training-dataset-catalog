@@ -8,39 +8,65 @@
 //   Knowledge         — recall domain-specific facts (API specs, MITRE techniques, DB schemas)
 //
 // Pipeline stages per domain:
-//   NL→SQL:      1-Triage  →  2-Generation  →  3-Repair   →  4-Robustness Eval
-//   Vulnerability: 1-Detection  →  2-CWE Classification  →  3-Patch Gen  →  4-TTP Mapping
-//   Agentic:     1-Intent  →  2-Function Call  →  3-Multi-turn  →  4-Trajectory
-//   LLM Safety:  1-Prompt Guardrail  →  2-Content Classification  →  3-Output Verification  →  4-Supply Chain
+//   NL→SQL:        1-Intent Classification  →  2-Generation  →  3-Output Verification
+//   Vulnerability: 1-Detection  →  2-CWE Classification
+//   CTI Triage:    1-CVE→CWE Classification  →  2-TTP Mapping  (text-modality threat-intel flow)
+//   Safety Stack:  1-Input Guardrail  →  2-Output Verification  →  3-Harm Categorization  (portable safety wrapper, cross-domain)
+//   Tool-Calling:  1-Intent  →  2-Function Calling  (slim subset of Agentic for non-agentic deployments)
+//   Structured Output: 1-FC Pretrain  →  2-SQL Specialization  →  3-Output Validation  (cross-domain transfer hypothesis)
+//   Agentic:       1-Input Guardrail  →  2-Intent  →  3-Function Calling  →  4-Multi-step Planning  →  5-Output Verification
+//                  (LLM Safety folded into Agentic stages 1 and 5 — safety adapters bracket the agent loop.)
+//
+// Core Capability Categories — what fundamental LLM capability each trainable task exercises.
+// Each trainableTasks entry is {name, capabilities: [...]}; capabilities are drawn from CORE_CAPABILITIES below.
+window.CORE_CAPABILITIES = [
+  { key: "Reasoning",               blurb: "logical, mathematical, causal, multi-step inference" },
+  { key: "Knowledge Recall",        blurb: "factual Q&A, world knowledge retrieval" },
+  { key: "Reading Comprehension",   blurb: "answering questions over a given passage" },
+  { key: "Information Extraction",  blurb: "NER, relation extraction, slot filling, IOC extraction" },
+  { key: "Classification",          blurb: "text categorization, sentiment, entailment, intent" },
+  { key: "Summarization",           blurb: "abstractive/extractive compression of longer text" },
+  { key: "Generation / Creative",   blurb: "open-ended text, storytelling, dialogue generation" },
+  { key: "Translation",             blurb: "cross-lingual" },
+  { key: "Instruction Following",   blurb: "formatting compliance, constraint adherence" },
+  { key: "Code",                    blurb: "generation, debugging, explanation" },
+  { key: "Structured Output",       blurb: "JSON/table/schema generation, form filling" },
+  { key: "Dialogue / Conversation", blurb: "multi-turn, dialog state tracking" }
+];
+
 window.CATALOG = [
 
   // ── NL→SQL ─────────────────────────────────────────────────────────────────
 
   {
-    id: "ehrsql",
-    name: "EHRSQL (MIMIC-III)",
-    hf: "nannullna/ehrsql_mimic_iii",
+    id: "when2call-sql",
+    name: "When2Call (NL→SQL intent gating)",
+    hf: "nvidia/When2Call",
     domain: "NL→SQL",
-    subdomain: "Answerability Triage",
-    usage: "both",
-    license: "Unconfirmed (no LICENSE on card — verify before commercial use)",
-    size: "10,440 examples / 9,320 train / 1,120 val / MIMIC-III EHR schema",
-    bestBaseline: "RoBERTa baseline ~60% F1 (TriageSQL paper); no published LoRA on EHRSQL",
-    loraArtifacts: "None — first LoRA triage adapter is an open opportunity",
+    subdomain: "Intent Classification",
+    usage: "training",
+    license: "CC BY 4.0",
+    size: "15K SFT train + 9K DPO preference train (`test` config EXCLUDED — see notes)",
+    bestBaseline: "MNM-8B RPO: 52.4% macro-F1 / 70.0% length-norm accuracy on the original tool-use task; no SQL-specific baseline yet",
+    loraArtifacts: "None for the SQL adaptation — full fine-tune MNM-8B exists for the original tool-use task; first SQL-intent LoRA is open opportunity",
     tier: 1,
-    rank: 0,
-    rankReason: "Only HF dataset with explicit answerable/unanswerable labels for NL→SQL; fills the Stage 1 gap",
-    taskCategories: ["Understanding"],
-    taskNote: "Given a clinical NL question + EHR schema, classify whether the question is answerable by SQL (is_impossible field). Teaches the model to gate before generation.",
-    notes: "Narrower domain (medical EHR / MIMIC-III only) than TriageSQL (20 datasets, ~390K). Best available HF option for Stage 1. TriageSQL and PRACTIQ have no HF mirror. License unconfirmed — verify before commercial training.",
-    composability: "Stage 1 gate — run before SQL generation adapter to reject unanswerable questions",
+    rank: 4,
+    rankReason: "Addresses the dominant production failure mode of NL→SQL — hallucinating SQL when the user's question is ambiguous, unanswerable from the schema, or not actually a query request. Cross-listed from Agentic; same dataset, different downstream action (refuse/clarify vs. emit SQL).",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Trains the gating decision: should the model emit SQL, ask a clarifying question, or refuse? The original When2Call labels (call / refuse / clarify) map directly onto SQL-emit / clarify / refuse without re-labeling — only the downstream action changes.",
+    notes: "Same dataset as the Agentic-domain entry — re-used here as a pre-generation gate. Use ONLY the `train_sft` and `train_pref` configs; the `test` config is perturbed BFCL v2 Live and contaminates BFCL leaderboards. Format gotchas carry over: `tools` is a list of JSON-encoded strings (`json.loads(t)` per element); `train_pref` wraps tool calls as `<TOOLCALL>[{…}]</TOOLCALL>` (re-template to base markers); `train_sft` is one-sided refusal/clarify only — pair with `train_pref.chosen_response` for the positive call action. For SQL repurposing, replace the tool-call action with `<SQL>...</SQL>` emission and keep refuse/clarify branches as-is. Adapter sits in front of Stage 2 generation: route only `call` predictions to the SQL adapter; route `clarify` to a follow-up prompt and `refuse` to a canned response.",
+    composability: "Stage 1 — input gate before Stage 2 generation; routes ambiguous/unanswerable queries away from the SQL adapter",
     pipelineStage: 1,
-    pipelineStageLabel: "Answerability Triage",
-    avgContextTokens: 150,
-    contextRelevancy: "High",
-    contextRelevancyNote: "The schema and question together determine answerability — both are required inputs.",
-    trainableTasks: ["SQL Answerability Triage", "Unanswerable Question Detection"]
+    pipelineStageLabel: "Intent Classification",
+    avgContextTokens: 200,
+    contextRelevancy: "Low",
+    contextRelevancyNote: "The decision to emit SQL is primarily driven by the user's NL request and high-level schema availability, not full schema content.",
+    trainableTasks: [
+      { name: "SQL-Emit Intent Classification", capabilities: ["Classification"] },
+      { name: "Clarification vs. Generation Routing", capabilities: ["Classification", "Reasoning"] }
+    ]
   },
+
   {
     id: "gretelai-synthetic-sql",
     name: "Gretel Synthetic Text-to-SQL",
@@ -54,17 +80,20 @@ window.CATALOG = [
     loraArtifacts: "Several HF community LoRAs",
     tier: 1,
     rank: 1,
-    rankReason: "Largest clean training corpus; Apache 2.0; instruction-tuning ready",
+    rankReason: "Largest clean training corpus; Apache 2.0; broadest domain coverage (100 verticals) of the three generation corpora",
     taskCategories: ["Generation"],
-    taskNote: "Pure SQL generation from NL + schema. Synthetic — no complex reasoning required; strong signal for output format and syntax.",
-    notes: "Best pure training corpus for SQL generation. Synthetic but high variety. No competitive benchmark — use for fine-tuning, evaluate on Spider/BIRD.",
-    composability: "High — pairs with Spider/BIRD eval",
+    taskNote: "Same NL+schema→SQL task as Spider/BIRD, but synthetic and easier — no complex reasoning required. Use as high-volume warmup or domain-breadth augmentation alongside Spider/BIRD in the generation stage.",
+    notes: "Largest clean synthetic SQL corpus across 100 verticals — but spot-checks reveal a non-trivial fraction of broken gold rows: prompt↔SQL semantic mismatches (filter-by-author when prompt asks for topic), invalid SQL (`MAX(COUNT(*))` directly in SELECT, HAVING without GROUP BY), filter-vs-data mismatches (`country = 'Africa'` over country-name column), and gold SQL referencing tables not defined in the row's `sql_context` DDL. Pre-training filter is mandatory: instantiate each row's `sql_context` as in-memory SQLite/DuckDB, execute the gold SQL, drop rows that fail to parse, fail to execute, or reference undefined tables. Expect to lose ≥10% of rows. Evaluate on Spider/BIRD, not on this set's own test split.",
+    composability: "Stage 2 generation — high-volume / broad-domain corpus alongside Spider and BIRD",
     pipelineStage: 2,
     pipelineStageLabel: "Generation",
     avgContextTokens: 500,
     contextRelevancy: "High",
     contextRelevancyNote: "Schema context is required to generate syntactically valid SQL across 100 verticals.",
-    trainableTasks: ["Text-to-SQL Generation", "Instruction-Tuned SQL"]
+    trainableTasks: [
+      { name: "Synthetic SQL Pretraining", capabilities: ["Code", "Structured Output"] },
+      { name: "Instruction-Tuned SQL", capabilities: ["Code", "Instruction Following"] }
+    ]
   },
   {
     id: "spider",
@@ -82,14 +111,18 @@ window.CATALOG = [
     rankReason: "Gold-standard benchmark; most published LoRAs; clear baseline to beat",
     taskCategories: ["Generation", "Reasoning"],
     taskNote: "Cross-domain SQL requires schema reasoning (joining tables, understanding relationships) and structured output generation.",
-    notes: "Cross-domain text-to-SQL gold standard. Best baseline is CodeS-7B (85.4% EX). Chains naturally with BIRD-CRITIC for error detection.",
-    composability: "Excellent — chains with repair stage",
+    notes: "Cross-domain text-to-SQL gold standard. Best baseline is CodeS-7B (85.4% EX). Chains naturally with BIRD-CRITIC for error detection. ⚠️ Overlap with Spider-Realistic and Spider-Syn: both reuse the same `db_id` and gold SQL as Spider dev — only the questions are paraphrased. So evaluating a Spider-trained adapter on Spider-Realistic / Spider-Syn validation tests robustness to question phrasing, NOT held-out generalization. Treat them as paraphrase-robustness diagnostics, not unseen-data eval. Annotation noise: mixed quoting (single vs double-backtick), inconsistent semicolons, schema-linking bias (questions often paraphrase column names directly).",
+    composability: "Stage 2 generation — chains with repair stage",
     pipelineStage: 2,
     pipelineStageLabel: "Generation",
     avgContextTokens: 325,
     contextRelevancy: "High",
     contextRelevancyNote: "Database schema is mandatory — without table/column names, cross-domain SQL is impossible.",
-    trainableTasks: ["Text-to-SQL Generation", "Cross-Domain SQL", "Schema Linking"]
+    trainableTasks: [
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Cross-Domain SQL", capabilities: ["Code", "Reasoning"] },
+      { name: "Schema Linking", capabilities: ["Information Extraction"] }
+    ]
   },
   {
     id: "bird-sql",
@@ -108,142 +141,51 @@ window.CATALOG = [
     taskCategories: ["Generation", "Reasoning", "Knowledge"],
     taskNote: "Real-world DBs require domain knowledge (e.g. medical, finance schemas), multi-hop reasoning, and precise SQL generation.",
     notes: "Best real-world difficulty. Caution: 22 wrong gold queries; BIRD EX has ~32% annotation noise (FLEX, NAACL 2025). Always report with caveats.",
-    composability: "Best real-world stress test",
+    composability: "Stage 2 generation — best real-world stress test",
     pipelineStage: 2,
     pipelineStageLabel: "Generation",
     avgContextTokens: 3000,
     contextRelevancy: "High",
     contextRelevancyNote: "Large real-world DBs (avg 80 columns) require schema-linking; context is the primary constraint.",
-    trainableTasks: ["Text-to-SQL Generation", "Production-Grade SQL", "Schema Linking", "Evidence-Based SQL"]
+    trainableTasks: [
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Production-Grade SQL", capabilities: ["Code", "Reasoning"] },
+      { name: "Schema Linking", capabilities: ["Information Extraction"] },
+      { name: "Evidence-Based SQL", capabilities: ["Reading Comprehension", "Code"] }
+    ]
   },
+
   {
-    id: "wikisql",
-    name: "WikiSQL",
-    hf: "Salesforce/wikisql",
+    id: "wildguardmix-sql",
+    name: "WildGuardMix (NL→SQL output verification)",
+    hf: "allenai/wildguardmix",
     domain: "NL→SQL",
-    subdomain: "SQL Generation",
-    usage: "both",
-    license: "BSD-3-Clause",
-    size: "56k train / 8.4k dev / 15.9k test",
-    bestBaseline: "SeaD 93.0% test EX (saturated)",
-    loraArtifacts: "Many",
+    subdomain: "Output Verification",
+    usage: "training",
+    license: "ODC-BY (training); WildGuardTest is gated behind contact-email request",
+    size: "~92k items: 86,759 train + 1,725 eval; 3 task heads (prompt-harm / response-harm / response-refusal)",
+    bestBaseline: "allenai/wildguard: 87.4% F1 response-harm on the original safety task; no SQL-specific baseline yet",
+    loraArtifacts: "None for the SQL adaptation — full fine-tune allenai/wildguard exists for the original safety task; first SQL-output-guard LoRA is open opportunity",
     tier: 2,
-    rank: 4,
-    rankReason: "Saturated benchmark — most models >87% EX; useful only for warm-up",
-    taskCategories: ["Generation"],
-    taskNote: "Single-table, simple SQL — mostly pattern matching. Minimal reasoning required. Teaches output format, not schema understanding.",
-    notes: "Single-table, simple SQL. Almost every model exceeds 87% EX — diminishing returns for benchmarking. Use only as warm-up / training augmentation.",
-    composability: "Low — single-table, not representative of real workloads",
-    pipelineStage: 2,
-    pipelineStageLabel: "Generation",
-    avgContextTokens: 100,
-    contextRelevancy: "High",
-    contextRelevancyNote: "Single-table schema is small but still required for column name resolution.",
-    trainableTasks: ["Text-to-SQL Generation (warm-up)", "Simple SQL Formatting"]
-  },
-  {
-    id: "spider-realistic",
-    name: "Spider-Realistic",
-    hf: "aherntech/spider-realistic",
-    domain: "NL→SQL",
-    subdomain: "Robustness Eval",
-    usage: "eval",
-    license: "CC BY 4.0",
-    size: "~508 examples / adversarially rewritten from Spider dev",
-    bestBaseline: "Most models drop 5–15% EX vs. Spider dev (no published LoRA)",
-    loraArtifacts: "None — eval only",
-    tier: 2,
-    rank: 6,
-    rankReason: "Adversarial rephrasing eval; reveals phrasing sensitivity of Spider-trained adapters",
-    taskCategories: ["Generation", "Reasoning"],
-    taskNote: "Questions are adversarially rephrased to avoid lexical overlap with training data — tests generalization, not memorization.",
-    notes: "Too small for training (<1K). Use alongside Spider-Syn as a diagnostic pair: drops >10% EX indicate phrasing overfitting. Dr.Spider (15K, 17 perturbation types) is the canonical robustness set but has no HF mirror.",
-    composability: "Stage 4 eval — pair with Spider-Syn for broader robustness coverage",
-    pipelineStage: 4,
-    pipelineStageLabel: "Robustness Eval",
-    avgContextTokens: 325,
-    contextRelevancy: "High",
-    contextRelevancyNote: "Same schema-dependency as Spider; schema is still required for correct SQL generation.",
-    trainableTasks: ["SQL Robustness Eval (adversarial rephrasing)"]
-  },
-  {
-    id: "spider-syn",
-    name: "Spider-Syn",
-    hf: "aherntech/spider-syn",
-    domain: "NL→SQL",
-    subdomain: "Robustness Eval",
-    usage: "eval",
-    license: "CC BY-SA 4.0",
-    size: "~1,034 dev examples / synonym-substituted Spider questions (Gan et al., ACL 2021)",
-    bestBaseline: "PICARD most robust — ~14% overall EX drop; DBcontent-equivalence perturbation causes 50.7% drop",
-    loraArtifacts: "None — eval only",
-    tier: 2,
-    rank: 7,
-    rankReason: "Synonym-substitution variant of Spider; more coverage than Spider-Realistic; CC BY-SA",
-    taskCategories: ["Generation", "Reasoning"],
-    taskNote: "Schema keywords replaced with synonyms — forces the model to reason about semantics rather than match surface tokens.",
-    notes: "Pairs with Spider-Realistic for complementary robustness coverage: Realistic tests adversarial rephrasing, Syn tests synonym substitution. Neither is large enough to train on — use Dr.Spider (15K, no HF mirror) as the authoritative eval.",
-    composability: "Stage 4 eval — run alongside Spider-Realistic after generation adapter",
-    pipelineStage: 4,
-    pipelineStageLabel: "Robustness Eval",
-    avgContextTokens: 325,
-    contextRelevancy: "High",
-    contextRelevancyNote: "Schema is still required; synonym substitution tests semantic generalization, not context-independence.",
-    trainableTasks: ["SQL Robustness Eval (synonym substitution)"]
-  },
-  {
-    id: "bird-critic",
-    name: "BIRD-CRITIC",
-    hf: "birdsql/bird-critic-1.0-open",
-    domain: "NL→SQL",
-    subdomain: "SQL Repair",
-    usage: "both",
-    license: "CC BY-NC 4.0",
-    size: "570 open / 200 held-out PG / 200 OOD / PostgreSQL",
-    bestBaseline: "O3-mini 38.87%; BIRD-Talon-14B (RL/PEFT) released",
-    loraArtifacts: "BIRD-Talon-14B, BIRD-Zeno-7B (RL/PEFT)",
-    tier: 1,
-    rank: 5,
-    rankReason: "Only SQL repair dataset with deployed RL/PEFT adapter; fills Stage 3 gap in NL→SQL pipeline",
-    taskCategories: ["Reasoning", "Generation"],
-    taskNote: "Model receives a wrong SQL query + execution error feedback, must reason about the mistake and generate a corrected version.",
-    notes: "Fills the repair stage missing from Spider/BIRD. SIX-GYM eval environment tests corrections with real PostgreSQL execution + query execution plan analysis.",
-    composability: "Stage 3 — receives output from Spider/BIRD generation adapters",
+    rank: 8,
+    rankReason: "Cross-listed from Agentic; gates harmful or exfiltration-style SQL outputs (destructive DDL/DML, data scraping, injected commands) before execution. Symmetric to Agentic pipeline's Stage 5.",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Trains a binary verifier on (NL prompt, generated SQL) pairs: should this SQL be executed, refused, or flagged? Repurposes the response-harm and refusal-correctness heads from the original safety task.",
+    notes: "Same dataset as the Agentic-domain entry — re-used here as a post-generation verifier between the SQL adapter and the database executor. Repurposing requires re-templating: replace the (prompt, response) pair with (NL request, generated SQL) and treat destructive/exfiltration SQL as the harmful class. The response-harm head transfers most directly; the refusal-correctness head is useful for cases where the model emitted SQL when it should have refused (catches Stage 1 false-positives). Limitations: WildGuardMix harm taxonomy is not SQL-specific, so out-of-the-box transfer flags overtly harmful natural-language patterns better than subtle SQL-level threats (e.g., a benign-looking SELECT that exfiltrates a password column). Pair with an SQL-specific allow/deny rule layer for production. WildGuardTest split is gated (contact AllenAI); train split is open under ODC-BY.",
+    composability: "Stage 3 — output gate after Stage 2 generation; routes harmful/exfiltrating SQL away from the database executor",
     pipelineStage: 3,
-    pipelineStageLabel: "SQL Repair",
-    avgContextTokens: 600,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 250,
     contextRelevancy: "High",
-    contextRelevancyNote: "Wrong SQL + execution error message + schema are all required to generate a valid repair.",
-    trainableTasks: ["SQL Repair / Critique", "Error-Guided SQL Revision"]
+    contextRelevancyNote: "Both the NL request and the generated SQL are required to judge whether execution is safe.",
+    trainableTasks: [
+      { name: "SQL Output Safety Classification", capabilities: ["Classification"] },
+      { name: "Destructive / Exfiltration SQL Detection", capabilities: ["Code", "Classification"] }
+    ]
   },
 
   // ── Vulnerability ──────────────────────────────────────────────────────────
 
-  {
-    id: "bigvul",
-    name: "BigVul",
-    hf: "bstee615/bigvul",
-    domain: "Vulnerability",
-    subdomain: "Detection",
-    usage: "both",
-    license: "MIT (upstream Fan et al. MSR 2020 GitHub)",
-    size: "10.9k vuln / 177.7k non-vuln / 3,754 CVEs / 91 CWEs / 348 projects",
-    bestBaseline: "LineVul F1 0.91 / P 0.97 / R 0.86",
-    loraArtifacts: "mahdin70/CodeBERT-Primevul-BigVul; numerous HF community adapters",
-    tier: 1,
-    rank: 1,
-    rankReason: "Most LoRA artifacts; known baselines; CWE labels; best training corpus",
-    taskCategories: ["Understanding", "Reasoning"],
-    taskNote: "Model must understand C/C++ code semantics and reason about vulnerability patterns — beyond surface syntax.",
-    notes: "Best training corpus for vuln detection. High F1 on BigVul itself (0.91) collapses to ~3% on PrimeVul — always pair BigVul training with PrimeVul eval to test real generalization.",
-    composability: "Excellent — detection→CWE classification→fix chain",
-    pipelineStage: 1,
-    pipelineStageLabel: "Detection",
-    avgContextTokens: 180,
-    contextRelevancy: "High",
-    contextRelevancyNote: "The C/C++ function body IS the task — vulnerability patterns are localized to the code snippet.",
-    trainableTasks: ["Vulnerability Detection", "Vulnerable-Line Localization", "CWE Classification (code)"]
-  },
   {
     id: "primevul",
     name: "PrimeVul",
@@ -267,7 +209,10 @@ window.CATALOG = [
     avgContextTokens: 450,
     contextRelevancy: "High",
     contextRelevancyNote: "Deduplicated real-world CVE functions; vulnerability patterns require precise code reading.",
-    trainableTasks: ["Vulnerability Detection (eval)", "CWE Classification (code)"]
+    trainableTasks: [
+      { name: "Vulnerability Detection (eval)", capabilities: ["Code", "Classification"] },
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
   },
   {
     id: "diversevul",
@@ -292,33 +237,68 @@ window.CATALOG = [
     avgContextTokens: 200,
     contextRelevancy: "High",
     contextRelevancyNote: "Function body IS the task — multi-language vulnerability patterns require reading the full code snippet.",
-    trainableTasks: ["Vulnerability Detection (multi-language)", "CWE Classification (code)"]
+    trainableTasks: [
+      { name: "Vulnerability Detection (multi-language)", capabilities: ["Code", "Classification"] },
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
   },
+
   {
-    id: "cvefixes",
-    name: "CVEfixes",
-    hf: "DetectVul/CVEFixes",
+    id: "diversevul-cwe",
+    name: "DiverseVul (CWE labels for code→CWE classification)",
+    hf: "bstee615/diversevul",
     domain: "Vulnerability",
-    subdomain: "Patch Generation",
-    usage: "both",
-    license: "Data CC BY 4.0 · Code MIT",
-    size: "~12.1k CVEs / 50.3k functions / multi-language",
-    bestBaseline: "CodeBERT/GraphCodeBERT ~12.8 F1",
-    loraArtifacts: "Few official LoRAs",
-    tier: 2,
-    rank: 4,
-    rankReason: "Clean license; multi-language; low baseline = room to improve; patch generation stage",
-    taskCategories: ["Generation", "Reasoning"],
-    taskNote: "Model must understand a vulnerable code snippet and generate a corrected version — requires both code reasoning and generation.",
-    notes: "Best multi-language patch generation dataset. Very low F1 baseline (12.8) means large improvement headroom. Clean license (CC BY 4.0 + MIT).",
-    composability: "Detection→patch generation chain",
-    pipelineStage: 3,
-    pipelineStageLabel: "Patch Generation",
-    avgContextTokens: 300,
+    subdomain: "CWE Classification",
+    usage: "training",
+    license: "Research use (per-repo; verify before commercial use)",
+    size: "~330k functions; subset with non-null CWE labels covers 150+ CWE classes",
+    bestBaseline: "No published code→CWE LoRA on DiverseVul CWE labels; DiverseVul paper reports CodeBERT 30.0% F1 on detection (binary), CWE-class breakdown not table-1 headline",
+    loraArtifacts: "None directly — first code→CWE LoRA on DiverseVul is open opportunity",
+    tier: 1,
+    rank: 2,
+    rankReason: "Same dataset as Stage 1 entry; CWE labels live on the same rows. Code-modality CWE classification composes directly with Stage 1 detection — no new dataset, no modality switch.",
+    taskCategories: ["Understanding", "Knowledge", "Classification"],
+    taskNote: "Filter rows where the CWE field is non-null and train code → CWE-ID multi-class classification. Long-tail label distribution (top-20 CWEs cover most rows) — consider class weighting or top-K eval.",
+    notes: "Cross-listed from the Stage 1 Detection entry — same HF dataset, different supervision target. For Stage 2, drop the binary `target` and supervise on `cwe` (filter null). Heavy long-tail across 150+ CWEs; many classes have <50 examples. Training options: (a) flat multi-class on all CWEs (noisy), (b) collapse to CWE pillars / top-K (cleaner), (c) hierarchical (CWE-1000 view parent → child). Pair with PrimeVul-CWE for clean held-out eval.",
+    composability: "Stage 2 — primary training corpus for code→CWE classification; receives flagged code from Stage 1 Detection",
+    pipelineStage: 2,
+    pipelineStageLabel: "CWE Classification",
+    avgContextTokens: 200,
     contextRelevancy: "High",
-    contextRelevancyNote: "The vulnerable function is the only source of information for generating a correct fix.",
-    trainableTasks: ["Security-Fix Commit Classification", "Patch Generation", "CVE→CWE Classification (text)", "CVE Severity Triage", "Fix Verification"]
+    contextRelevancyNote: "Function body is the input; CWE label requires the model to recognize vulnerability patterns at the code level.",
+    trainableTasks: [
+      { name: "CWE Classification (code)", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
   },
+
+  {
+    id: "primevul-cwe",
+    name: "PrimeVul (CWE labels for code→CWE eval)",
+    hf: "colin/PrimeVul",
+    domain: "Vulnerability",
+    subdomain: "CWE Classification",
+    usage: "eval",
+    license: "MIT",
+    size: "~7k vuln functions with CWE labels / 140+ CWEs / chronological split",
+    bestBaseline: "No published code→CWE eval baseline on PrimeVul CWE labels (binary detection ceiling is ~17.8% F1 on 7B)",
+    loraArtifacts: "None directly for code→CWE eval on PrimeVul",
+    tier: 1,
+    rank: 3,
+    rankReason: "Same dataset as Stage 1 eval entry; chronological split + dedup makes it the cleanest held-out CWE classification eval available",
+    taskCategories: ["Understanding", "Knowledge", "Classification"],
+    taskNote: "Held-out evaluation of code → CWE classification. Use the chronological split's later-time slice for true distribution-shift eval.",
+    notes: "Cross-listed from the Stage 1 Detection entry — same HF dataset, used here as held-out eval for the Stage 2 CWE classification adapter. Chronological split ensures eval functions are temporally separated from any training corpus that leaks into PrimeVul. CWE labels follow the same long-tail as DiverseVul; report top-1 / top-3 / top-5 along with per-pillar breakdown.",
+    composability: "Stage 2 eval — held-out clean eval for code→CWE adapter trained on DiverseVul CWE labels",
+    pipelineStage: 2,
+    pipelineStageLabel: "CWE Classification",
+    avgContextTokens: 450,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Function body is the input; CWE label requires reading the full vulnerable code.",
+    trainableTasks: [
+      { name: "CWE Classification (code) — eval", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
+  },
+
   {
     id: "circl-vuln-cwe",
     name: "CIRCL Vulnerability CWE Patch",
@@ -332,17 +312,18 @@ window.CATALOG = [
     loraArtifacts: "CIRCL/cwe-parent-vulnerability-classification-roberta-base",
     tier: 1,
     rank: 7,
-    rankReason: "Only dedicated CWE classification dataset with train/test split and a published fine-tuned model; fills Stage 2 gap in Vulnerability pipeline",
+    rankReason: "Only dedicated CWE classification dataset with train/test split and a published fine-tuned model; orphan entry — input modality (CVE description text) does not compose with the code-modality main pipeline",
     taskCategories: ["Understanding", "Knowledge"],
     taskNote: "Model maps CVE description → CWE ID, requiring knowledge of vulnerability taxonomy and understanding of security semantics.",
-    notes: "39.2K real CVEs with CWE labels sourced from NVD, GHSA, GitHub. Published RoBERTa fine-tune confirms viability. Filter rows where cwe is not null for classification training.",
-    composability: "Stage 2 — classifies vulnerability type after detection; feeds into targeted patch generation",
-    pipelineStage: 2,
-    pipelineStageLabel: "CWE Classification",
+    notes: "39.2K real CVEs with CWE labels sourced from NVD, GHSA, GitHub. Published RoBERTa fine-tune confirms viability. Filter rows where cwe is not null for classification training. ⚠️ Orphan entry — input is CVE description prose, not code, so it does NOT chain after the code-modality Detection stage. Useful for a separate text-modality CVE triage flow if you build one; for code → CWE labeling in the main pipeline, use the CWE labels already present on DiverseVul/PrimeVul instead.",
+    composability: "Orphan — text-modality CVE→CWE; standalone training corpus, not part of the main code-vulnerability pipeline",
     avgContextTokens: 400,
     contextRelevancy: "Medium",
     contextRelevancyNote: "CVE description provides context but CWE patterns are partly parametric — model can learn taxonomy from description text alone.",
-    trainableTasks: ["CWE Classification (text)", "CVE→CWE Mapping"]
+    trainableTasks: [
+      { name: "CWE Classification (text)", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "CVE→CWE Mapping", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
   },
 
   {
@@ -358,30 +339,94 @@ window.CATALOG = [
     loraArtifacts: "None for technique classification — closest is sarahwei full fine-tune for tactic level; first technique LoRA is an open opportunity",
     tier: 1,
     rank: 8,
-    rankReason: "Only Apache 2.0 TTP mapping dataset on HF with full ATT&CK v16 coverage; no LoRA published = first-mover advantage",
+    rankReason: "Only Apache 2.0 TTP mapping dataset on HF with full ATT&CK v16 coverage; no LoRA published = first-mover advantage; orphan entry — input modality (CTI procedure sentences) does not compose with the code-modality main pipeline",
     taskCategories: ["Understanding", "Knowledge"],
     taskNote: "Model maps a CTI procedure sentence to a MITRE ATT&CK technique ID — requires knowledge of the ATT&CK taxonomy and understanding of threat actor behavior.",
-    notes: "Sourced directly from MITRE ATT&CK Enterprise v16 procedural descriptions. ~25 examples/class average; imbalanced distribution. Apache 2.0 license. No published LoRA adapter — significant opportunity.",
-    composability: "Stage 4 — maps detected vulnerabilities / threat reports to ATT&CK techniques for prioritized response",
-    pipelineStage: 4,
-    pipelineStageLabel: "TTP Mapping",
+    notes: "Sourced directly from MITRE ATT&CK Enterprise v16 procedural descriptions. ~25 examples/class average; imbalanced distribution. Apache 2.0 license. No published LoRA adapter — significant opportunity. ⚠️ Orphan entry — input is a CTI procedure sentence (threat-intel prose), not code or CVE. Belongs in a separate threat-intel triage flow, not in the code-vulnerability pipeline.",
+    composability: "Orphan — text-modality CTI→ATT&CK technique; standalone training corpus, not part of the main code-vulnerability pipeline",
     avgContextTokens: 80,
     contextRelevancy: "Low",
     contextRelevancyNote: "The procedure sentence itself is the input — no external schema or context required; purely parametric knowledge task.",
-    trainableTasks: ["CTI→MITRE Technique Mapping", "CTI→MITRE Tactic Classification", "TTP Evidence-Span Extraction", "TTP Procedure Mapping"]
+    trainableTasks: [
+      { name: "CTI→MITRE Technique Mapping", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "CTI→MITRE Tactic Classification", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "TTP Evidence-Span Extraction", capabilities: ["Information Extraction"] },
+      { name: "TTP Procedure Mapping", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
+  },
+
+  // ── CTI Triage ─────────────────────────────────────────────────────────────
+
+  {
+    id: "circl-vuln-cwe-cti",
+    name: "CIRCL Vulnerability CWE Patch (CTI Triage Stage 1)",
+    hf: "CIRCL/vulnerability-cwe-patch",
+    domain: "CTI Triage",
+    subdomain: "CVE→CWE Classification",
+    usage: "both",
+    license: "CC BY 4.0 (inferred from CIRCL sibling datasets — verify before commercial use)",
+    size: "39.2k CVEs / 49k patches / 35.3k train / 3.9k test",
+    bestBaseline: "CIRCL/cwe-parent-vulnerability-classification-roberta-base (published fine-tune)",
+    loraArtifacts: "CIRCL/cwe-parent-vulnerability-classification-roberta-base",
+    tier: 1,
+    rank: 1,
+    rankReason: "Cross-listed from Vulnerability domain — text-modality CVE→CWE classification fits cleanly as Stage 1 of a threat-intel triage flow that operates on prose rather than code",
+    taskCategories: ["Understanding", "Knowledge"],
+    taskNote: "Model maps CVE description → CWE ID. CTI Triage flow: incoming CVE prose is classified to CWE first, then the CWE is mapped (via downstream rules or a separate adapter) to ATT&CK techniques relevant to that vuln class.",
+    notes: "Same HF dataset as the Vulnerability orphan entry — re-listed here as Stage 1 of the CTI Triage flow because the input modality (CVE description prose) matches Stage 2 (MITRE CTI prose). Filter rows where cwe is non-null. 39.2K real CVEs from NVD/GHSA/GitHub. Published RoBERTa fine-tune baseline.",
+    composability: "Stage 1 — text-modality CVE→CWE classification; feeds CWE labels into downstream TTP mapping",
+    pipelineStage: 1,
+    pipelineStageLabel: "CVE→CWE Classification",
+    avgContextTokens: 400,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "CVE description provides primary context; CWE patterns are partly parametric.",
+    trainableTasks: [
+      { name: "CVE→CWE Mapping", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "CWE Classification (text)", capabilities: ["Classification", "Knowledge Recall"] }
+    ]
+  },
+
+  {
+    id: "mitre-cti-ttp-cti",
+    name: "MITRE ATT&CK CTI v16 (CTI Triage Stage 2)",
+    hf: "sarahwei/cyber_MITRE_technique_CTI_dataset_v16",
+    domain: "CTI Triage",
+    subdomain: "TTP Mapping",
+    usage: "training",
+    license: "Apache 2.0",
+    size: "14,008 examples / 552 ATT&CK techniques (sub-techniques) / Enterprise v16",
+    bestBaseline: "sarahwei/MITRE-v16-tactic-bert-case-based: 0.989 val acc (tactic level only, not technique)",
+    loraArtifacts: "None for technique classification — first technique LoRA is open opportunity",
+    tier: 1,
+    rank: 2,
+    rankReason: "Cross-listed from Vulnerability orphan — Stage 2 of CTI Triage. Maps CTI prose to ATT&CK technique IDs; pairs with CIRCL Stage 1 to give a full text-modality triage flow",
+    taskCategories: ["Understanding", "Knowledge"],
+    taskNote: "Model maps a CTI procedure sentence to a MITRE ATT&CK technique ID. In the CTI Triage flow this consumes either raw CTI procedure text (e.g. from a threat report) or CWE-augmented context produced by Stage 1.",
+    notes: "Sourced from MITRE ATT&CK Enterprise v16 procedural descriptions. ~25 examples/class; imbalanced. Apache 2.0. No published LoRA for technique-level classification — strong first-mover opportunity.",
+    composability: "Stage 2 — text-modality CTI→ATT&CK technique mapping; consumes prose (optionally CWE-augmented from Stage 1)",
+    pipelineStage: 2,
+    pipelineStageLabel: "TTP Mapping",
+    avgContextTokens: 80,
+    contextRelevancy: "Low",
+    contextRelevancyNote: "The procedure sentence itself is the input; purely parametric knowledge task.",
+    trainableTasks: [
+      { name: "CTI→MITRE Technique Mapping", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "CTI→MITRE Tactic Classification", capabilities: ["Classification", "Knowledge Recall"] },
+      { name: "TTP Evidence-Span Extraction", capabilities: ["Information Extraction"] }
+    ]
   },
 
   // ── Agentic ────────────────────────────────────────────────────────────────
 
   {
     id: "when2call",
-    name: "When2Call",
+    name: "When2Call (train_sft + train_pref only)",
     hf: "nvidia/When2Call",
     domain: "Agentic",
     subdomain: "Intent Classification",
-    usage: "both",
+    usage: "training",
     license: "CC BY 4.0",
-    size: "15K SFT train + 9K DPO preference train + 3,652 MCQ test + 300 LLM-judge test",
+    size: "15K SFT train + 9K DPO preference train (the 3,652 MCQ + 300 LLM-judge `test` config is EXCLUDED — see notes)",
     bestBaseline: "MNM-8B RPO: 52.4% macro-F1 / 70.0% length-norm accuracy (vs GPT-4o 61.3 F1); tool-hallucination 19%→1.2%",
     loraArtifacts: "None (published model is full fine-tune MNM-8B, not LoRA) — first LoRA adapter is an open opportunity",
     tier: 1,
@@ -389,14 +434,17 @@ window.CATALOG = [
     rankReason: "No published LoRA = win opportunity; cleanest intent-classification contract; DPO data included",
     taskCategories: ["Understanding", "Reasoning"],
     taskNote: "Model must understand the user's intent and reason about whether tool use is appropriate — a meta-level capability distinct from knowing how to call tools.",
-    notes: "Cleanest when-not-to-call-tools dataset. No published LoRA adapter exists — first mover advantage. DPO data makes it suitable for preference alignment.",
+    notes: "Use ONLY the `train_sft` and `train_pref` configs. The `test` config is perturbed BFCL v2 Live (held-out param / removed tool / swapped tool, with `orig_question` carrying the pre-perturbation BFCL text) — training on it contaminates every BFCL leaderboard number. Treat the `test` config as eval-only or skip it entirely. Format gotchas: `tools` is a list of JSON-encoded strings (needs `json.loads(t)` per element); `train_pref` wraps tool calls as `<TOOLCALL>[{…}]</TOOLCALL>` strings (re-template to base markers); `train_sft` is one-sided (refusal/clarify only) — pair with `train_pref.chosen_response` for the positive call action. Train rows derive from xLAM with Mixtral-8x22B perturbations, so dedup against raw xLAM by `orig_query` hash if mixing.",
     composability: "Tool-use intent classification stage (pipeline gating)",
-    pipelineStage: 1,
+    pipelineStage: 2,
     pipelineStageLabel: "Intent Classification",
     avgContextTokens: 200,
     contextRelevancy: "Low",
     contextRelevancyNote: "The decision to call a tool is primarily driven by the user's NL request, not external context.",
-    trainableTasks: ["Tool-Use Intent Classification", "Tool Hallucination Reduction"]
+    trainableTasks: [
+      { name: "Tool-Use Intent Classification", capabilities: ["Classification"] },
+      { name: "Tool Hallucination Reduction", capabilities: ["Instruction Following"] }
+    ]
   },
   {
     id: "xlam-60k",
@@ -410,18 +458,22 @@ window.CATALOG = [
     bestBaseline: "xLAM-7b-fc-r 88.24% BFCL overall",
     loraArtifacts: "xLAM-1b/7b-fc-r on HF; official QLoRA fine-tuning cookbook",
     tier: 1,
-    rank: 2,
-    rankReason: "Official training corpus for SOTA BFCL results; proven LoRA recipe; 3,673 verified APIs",
+    rank: 3,
+    rankReason: "Official training corpus for SOTA BFCL results; proven LoRA recipe; 3,673 verified APIs. ⚠️ Gated by Salesforce — requires HF access request before use; treat as restricted addition to Glaive (primary)",
     taskCategories: ["Generation", "Knowledge"],
     taskNote: "Model must know API signatures (Knowledge) and generate correctly structured function calls with right parameters (Generation).",
     notes: "Primary training corpus for function calling adapters. The xLAM-*-fc-r models are trained on this and hold top BFCL positions. Official QLoRA recipe available.",
     composability: "Primary training data — foundation for function-calling adapter",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 414,
     contextRelevancy: "Medium",
     contextRelevancyNote: "API specs help disambiguate function signatures, but many tool calls are inferable from NL alone.",
-    trainableTasks: ["Function Calling (single-turn)", "Tool Selection", "Argument Extraction"]
+    trainableTasks: [
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
+    ]
   },
   {
     id: "glaive-fc-v2",
@@ -435,43 +487,51 @@ window.CATALOG = [
     bestBaseline: "Base for Hermes-2-Pro, Mistral FC variants",
     loraArtifacts: "96+ models on HF trained on this data",
     tier: 1,
-    rank: 3,
-    rankReason: "96+ downstream LoRAs; CC BY-SA; most widely used FC training corpus",
+    rank: 2,
+    rankReason: "Promoted to primary Stage 3 trainer over xLAM (gated): 96+ downstream LoRAs trace lineage here; CC BY-SA; most widely used and most accessible FC training corpus",
     taskCategories: ["Generation", "Reasoning"],
     taskNote: "Multi-turn conversations require tracking context across turns (Reasoning) and generating correct function calls (Generation).",
     notes: "Most widely reused function-calling training dataset. 96+ LoRA models trace their training lineage here. CC BY-SA license is clean for publication.",
     composability: "Solid warm-up / augmentation layer",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 512,
     contextRelevancy: "Medium",
     contextRelevancyNote: "Multi-turn context matters for state tracking, but function specs are often redundant with the NL description.",
-    trainableTasks: ["Function Calling (multi-turn)", "Tool Selection", "Conversation-State Tracking"]
+    trainableTasks: [
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Conversation-State Tracking", capabilities: ["Dialogue / Conversation"] }
+    ]
   },
   {
     id: "toolmind",
-    name: "ToolMind",
+    name: "ToolMind (graph_syn_datasets only)",
     hf: "Nanbeige/ToolMind",
     domain: "Agentic",
     subdomain: "Function Calling",
     usage: "training",
     license: "Apache 2.0",
-    size: "160k synthetic + 200k augmented multi-turn",
-    bestBaseline: "Qwen3-14B + ToolMind: 53.00% τ-bench (+14.22% over base)",
+    size: "163k rows — synthetic split only (load `graph_syn_datasets`; do NOT load `open_datasets`)",
+    bestBaseline: "Qwen3-14B + ToolMind: 53.00% τ-bench (+14.22% over base) — paper number is on the full dataset",
     loraArtifacts: "Trains LoRA-compatible models",
     tier: 1,
     rank: 4,
-    rankReason: "Best aggregator: integrates xLAM-60k + When2Call + glaive + ToolACE + APIGen-MT; largest volume",
+    rankReason: "Largest Apache-clean multi-turn FC corpus with `<think>` reasoning traces; synthetic-only split avoids overlap and license contagion",
     taskCategories: ["Generation", "Reasoning", "Knowledge"],
-    taskNote: "Broadest agentic coverage — model learns API knowledge, multi-step tool planning, and output generation across 7 source datasets.",
-    notes: "Best single training corpus when you want breadth. Aggregates 7 source datasets. +14.22% τ-bench improvement reported with Qwen3-14B.",
-    composability: "Best aggregator dataset",
-    pipelineStage: 2,
-    pipelineStageLabel: "Function Calling",
+    taskNote: "Multi-turn function calling with optional `<think>` reasoning traces per assistant turn. Built from a function-compatibility graph + multi-agent rollout, not from re-filtered OSS sources.",
+    notes: "ONLY load the `graph_syn_datasets` split (163k synthetic). The `open_datasets` split (205k) is excluded — it re-issues filtered xLAM/Glaive/ToolACE/APIGen-MT rows, causing 2× weighting under naive union AND inheriting CC-BY-NC contagion from the APIGen-MT slice with no source-of-row metadata to subset out. Caveats for the synthetic split: (1) trajectories are fanned into `(prefix, next-turn)` rows with no `trajectory_id` — group by longest-common-prefix before splitting train/val to avoid prefix leakage; (2) `<think>` markers are non-standard for Granite — route to base reasoning channel or strip; (3) reasoning-trace teacher undisclosed.",
+    composability: "Stage 4 — multi-step planning + reasoning-trace adapter built atop Stage 3 function-calling base",
+    pipelineStage: 4,
+    pipelineStageLabel: "Multi-step Tool Planning",
     avgContextTokens: 500,
     contextRelevancy: "Medium",
-    contextRelevancyNote: "Aggregated across 7 source datasets; API specs are helpful but intent is often expressed in NL.",
-    trainableTasks: ["Function Calling (broad coverage)", "Multi-step Tool Planning", "Tool Selection", "Argument Extraction"]
+    contextRelevancyNote: "Multi-turn dialogues with structured tool specs; specs disambiguate args but core intent is in NL.",
+    trainableTasks: [
+      { name: "Multi-step Tool Planning", capabilities: ["Reasoning"] },
+      { name: "Reasoning-trace FC (`<think>`)", capabilities: ["Reasoning", "Structured Output"] },
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] }
+    ]
   },
   {
     id: "toolace",
@@ -491,97 +551,53 @@ window.CATALOG = [
     taskNote: "Diverse API pool (26.5k) teaches API knowledge breadth; output is structured function calls.",
     notes: "Strong training data behind top BFCL results. ToolACE-8B holds 89.17% on BFCL-v1. Partially public on HF.",
     composability: "Excellent augmentation for function calling",
-    pipelineStage: 2,
+    pipelineStage: 3,
     pipelineStageLabel: "Function Calling",
     avgContextTokens: 400,
     contextRelevancy: "Medium",
     contextRelevancyNote: "26.5K API pool requires specs for correct parameter typing, but coarse intent is NL-inferable.",
-    trainableTasks: ["Function Calling (single-turn)", "Tool Selection", "Argument Extraction"]
-  },
-  {
-    id: "apigen-mt-5k",
-    name: "APIGen-MT-5k",
-    hf: "Salesforce/APIGen-MT-5k",
-    domain: "Agentic",
-    subdomain: "Multi-turn Planning",
-    usage: "training",
-    license: "CC BY-NC 4.0 (gated, non-commercial — accept terms before downloading)",
-    size: "5k blueprint-driven multi-turn trajectories",
-    bestBaseline: "xLAM-2-70b-fc-r: 56.2% τ-bench (beats GPT-4o 52.9%); 78.19% BFCL v3",
-    loraArtifacts: "xLAM-2-fc-r series (1B–70B)",
-    tier: 2,
-    rank: 6,
-    rankReason: "Crucial for multi-turn; small but high quality; underpins xLAM-2 τ-bench SOTA",
-    taskCategories: ["Reasoning", "Generation"],
-    taskNote: "Multi-turn trajectories require planning across steps (Reasoning) and generating correct calls at each step (Generation). Key for reliability.",
-    notes: "Small (5k) but the training data behind xLAM-2 τ-bench results that beat GPT-4o. ⚠️ CC BY-NC 4.0 — non-commercial only; gated on HF. For commercial pipelines use ToolACE (Apache 2.0) or ToolMind (Apache 2.0) instead.",
-    composability: "Multi-turn agent interaction stage",
-    pipelineStage: 3,
-    pipelineStageLabel: "Multi-turn Planning",
-    avgContextTokens: 800,
-    contextRelevancy: "High",
-    contextRelevancyNote: "Multi-turn trajectories require tracking prior tool outputs as context for each subsequent call.",
-    trainableTasks: ["Multi-turn Function Calling", "Tool-State Tracking", "Agentic Planning"]
-  },
-  {
-    id: "bfcl",
-    name: "BFCL v3",
-    hf: "gorilla-llm/Berkeley-Function-Calling-Leaderboard",
-    domain: "Agentic",
-    subdomain: "Function Calling",
-    usage: "eval",
-    license: "Apache 2.0",
-    size: "V1+V2: 2,210 test cases; V3 adds multi-turn and multi-step",
-    bestBaseline: "ToolACE-8B 89.17% BFCL-v1; xLAM-7b-fc-r 88.24% BFCL-v1",
-    loraArtifacts: "Eval anchor — not for training",
-    tier: 1,
-    rank: 7,
-    rankReason: "Primary eval benchmark; Apache 2.0; fast-moving leaderboard",
-    taskCategories: ["Generation", "Knowledge"],
-    taskNote: "Eval-only. Tests API knowledge recall and structured output generation across AST + execution + relevance dimensions.",
-    notes: "The consensus function-calling eval benchmark. Do not train on this. Leaderboard moves fast — re-pull numbers on the day of submission.",
-    composability: "Primary eval anchor",
-    pipelineStage: 4,
-    pipelineStageLabel: "Benchmark Eval",
-    avgContextTokens: 6218,
-    contextRelevancy: "Medium",
-    contextRelevancyNote: "37-tool toolsets provide context that reduces ambiguity, but eval measures generalization beyond specs.",
-    trainableTasks: ["Function Calling Eval (do not train)"]
+    trainableTasks: [
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] },
+      { name: "Tool Selection", capabilities: ["Classification"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
+    ]
   },
   {
     id: "agent-instruct",
-    name: "AgentInstruct",
+    name: "AgentInstruct (held-out trajectory eval)",
     hf: "zai-org/AgentInstruct",
     domain: "Agentic",
     subdomain: "Trajectory Decomposition",
-    usage: "training",
+    usage: "eval",
     license: "Apache 2.0",
-    size: "1,866 trajectories / 6 environments (DB, OS, web, card, reasoning, KG)",
+    size: "1,866 trajectories / 6 environments (ALFWorld, WebShop, Mind2Web, KG, OS, DB) / avg 5.24 turns",
     bestBaseline: "AgentLM-70B (Llama-2 + AgentInstruct FFT) matches GPT-3.5 on AgentBench",
-    loraArtifacts: "AgentLM-70B (FFT, LoRA-portable)",
+    loraArtifacts: "AgentLM-70B (FFT, LoRA-portable) — paper baseline",
     tier: 2,
     rank: 8,
-    rankReason: "Only trajectory-decomposition dataset with published model; fills Stage 4 gap in Agentic pipeline",
+    rankReason: "1.9k trajectories is too thin for training a Stage 4 adapter (use ToolMind for that), but the 6-environment coverage makes it the strongest held-out trajectory-decomposition eval available",
     taskCategories: ["Reasoning", "Generation"],
-    taskNote: "Multi-environment trajectories teach long-horizon planning — sequences of tool calls across diverse environments.",
-    notes: "Small (1.9K) but covers 6 diverse environments. AgentBench held-out eval (8 environments). LoRA-portable from the FFT checkpoint.",
-    composability: "Stage 4 — long-horizon planning atop Stage 2/3 function-calling adapters",
+    taskNote: "Multi-environment trajectories — ShareGPT-style {from, loss, value} message dicts. The `loss` flag on assistant turns is what makes it usable as eval (filtered/rewarded steps are pre-marked). Each environment has its own action vocabulary (bash for OS, SQL for DB, click/search for WebShop, ALFWorld text actions, etc.).",
+    notes: "Switched from training to eval-only: 1.9k trajectories across 6 environments is too sparse for adapter training (avg 5.24 turns × 1,866 trajectories ≈ 10k assistant turns total — vs. ToolMind's 163k rows). Use ToolMind as Stage 4 trainer; use AgentInstruct as held-out cross-environment eval to test whether the planning adapter generalizes beyond ToolMind's synthetic graph distribution. AgentBench (8 environments) is the canonical evaluation harness; AgentInstruct's 6 environments overlap heavily and provide an offline eval path. ShareGPT format with consistent schema across all 6 splits — the only thing that differs is the system prompt and action vocabulary.",
+    composability: "Stage 4 eval — held-out trajectory-decomposition probe across 6 environments; pairs with ToolMind training",
     pipelineStage: 4,
-    pipelineStageLabel: "Trajectory Decomposition",
+    pipelineStageLabel: "Multi-step Tool Planning",
     avgContextTokens: 1200,
     contextRelevancy: "High",
     contextRelevancyNote: "Full trajectory history (prior observations + tool results) is required to determine the next action.",
-    trainableTasks: ["Trajectory Decomposition", "Long-Horizon Planning", "Multi-Environment Agentic Skills"]
+    trainableTasks: [
+      { name: "Trajectory Decomposition", capabilities: ["Reasoning"] },
+      { name: "Long-Horizon Planning", capabilities: ["Reasoning"] },
+      { name: "Multi-Environment Agentic Skills", capabilities: ["Reasoning"] }
+    ]
   },
-
-  // ── LLM Safety ─────────────────────────────────────────────────────────────
 
   {
     id: "wildjailbreak",
     name: "WildJailbreak",
     hf: "allenai/wildjailbreak",
-    domain: "LLM Safety",
-    subdomain: "Jailbreak Detection",
+    domain: "Agentic",
+    subdomain: "Input Guardrail",
     usage: "both",
     license: "ODC-BY",
     size: "262k examples (vanilla + adversarial × harmful + benign; 4-cell design)",
@@ -593,12 +609,613 @@ window.CATALOG = [
     taskCategories: ["Understanding"],
     taskNote: "Binary classifier: is this prompt a jailbreak/injection attempt? The 4-cell design (vanilla/adversarial × harmful/benign) is critical — training on all 4 cells prevents over-refusing benign-edgy prompts.",
     notes: "Primary dataset for aLoRA jailbreak guardrail (BARHA task-12). 4-cell design enables a low false-positive rate on benign-but-edgy inputs, which is the key failure mode of simpler approaches. AllenAI WildGuard model trained on this achieves 97.7% F1.",
-    composability: "Stage 1 — input-side guardrail; runs against every inbound prompt in parallel with other safety adapters (toxicity, PII, topic-drift)",
+    composability: "Stage 1 — input-side guardrail bracketing the agent loop; runs on every inbound prompt before tool intent classification",
     pipelineStage: 1,
-    pipelineStageLabel: "Prompt Guardrail",
+    pipelineStageLabel: "Input Guardrail",
     avgContextTokens: 150,
     contextRelevancy: "High",
     contextRelevancyNote: "The full prompt text is the only signal — adversarial intent is encoded in phrasing, persona framing, and encoding tricks.",
-    trainableTasks: ["Jailbreak / Prompt-Injection Detection", "Adversarial Prompt Classification", "Safety Guardrail"]
+    trainableTasks: [
+      { name: "Jailbreak / Prompt-Injection Detection", capabilities: ["Classification"] },
+      { name: "Adversarial Prompt Classification", capabilities: ["Classification"] },
+      { name: "Safety Guardrail", capabilities: ["Classification"] }
+    ]
+  },
+  {
+    id: "wildguardmix",
+    name: "WildGuardMix",
+    hf: "allenai/wildguardmix",
+    domain: "Agentic",
+    subdomain: "Output Verification",
+    usage: "both",
+    license: "ODC-BY (training); WildGuardTest is gated behind contact-email request",
+    size: "~92k items: 86,759 train (wildguardtrain) + 1,725 eval (wildguardtest); 3 task heads (prompt-harm / response-harm / response-refusal)",
+    bestBaseline: "allenai/wildguard: 97.7% F1 prompt-harm, 87.4% F1 response-harm, 88.9% F1 refusal — outperforms GPT-4 across all three",
+    loraArtifacts: "allenai/wildguard (Mistral-7B FFT, LoRA-portable)",
+    tier: 1,
+    rank: 2,
+    rankReason: "Multi-head output safety classifier — covers prompt harm, response harm, and refusal correctness in one corpus; pairs naturally with WildJailbreak (same lab, complementary inputs/outputs)",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Three classification heads share the same example: (1) is the prompt harmful, (2) is the model's response harmful, (3) did the model refuse. Stage 5 uses heads (2) and (3) to gate agent outputs.",
+    notes: "Best open dataset for agent output verification. Use the response-harm head to flag harmful tool-call outputs and the response-refusal head to verify the agent refused when it should have. WildGuardTest is gated (contact AllenAI); train split is open.",
+    composability: "Stage 5 — verifies agent responses post-generation; pairs with WildJailbreak Stage 1 for end-to-end safety",
+    pipelineStage: 5,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 250,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Both prompt and response text are required to judge harm and refusal correctness.",
+    trainableTasks: [
+      { name: "Response Harm Classification", capabilities: ["Classification"] },
+      { name: "Refusal Correctness", capabilities: ["Classification"] },
+      { name: "Prompt Harm Classification", capabilities: ["Classification"] }
+    ]
+  },
+  {
+    id: "aegis-2.0",
+    name: "Aegis-AI-Content-Safety 2.0",
+    hf: "nvidia/Aegis-AI-Content-Safety-Dataset-2.0",
+    domain: "Agentic",
+    subdomain: "Output Verification",
+    usage: "training",
+    license: "CC BY 4.0",
+    size: "~33.4k human-annotated prompt+response pairs across 13 harm categories (Aegis 2.0 taxonomy)",
+    bestBaseline: "nvidia/Llama-Guard-3-8B fine-tuned on Aegis-2.0; competitive with WildGuard on response-harm classification",
+    loraArtifacts: "nvidia/Llama-3.1-Nemoguard-8B-ContentSafety (FFT, LoRA-portable)",
+    tier: 1,
+    rank: 3,
+    rankReason: "Fine-grained 13-category harm taxonomy (vs WildGuard's binary heads); CC-BY-4.0 license; complements WildGuardMix with category-level supervision",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Multi-class harm taxonomy (violence, sexual content, hate, self-harm, illegal, privacy, etc.). Trains category-aware safety classifiers — useful when downstream policy needs to know *which* harm category triggered a refusal, not just yes/no.",
+    notes: "Mistral-7B-v0.1 generated responses, human annotated. Pairs cleanly with WildGuardMix: WildGuard for binary harm + refusal heads, Aegis for fine-grained category labels. Use both for production safety stacks.",
+    composability: "Stage 5 — fine-grained content classification head; layered on top of WildGuardMix binary head",
+    pipelineStage: 5,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 300,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Response text is the primary signal; category labels require reading the full response.",
+    trainableTasks: [
+      { name: "Multi-class Harm Categorization", capabilities: ["Classification"] },
+      { name: "Response Harm Classification", capabilities: ["Classification"] }
+    ]
+  },
+
+  // ── Safety Stack ───────────────────────────────────────────────────────────
+  // Portable safety wrapper: WildJailbreak (input) + WildGuardMix (output binary) + Aegis 2.0 (output 13-cat).
+  // Cross-listed from Agentic; surfaces "deploy this safety stack around any model" as a first-class flow.
+
+  {
+    id: "wildjailbreak-safety",
+    name: "WildJailbreak (Safety Stack input guardrail)",
+    hf: "allenai/wildjailbreak",
+    domain: "Safety Stack",
+    subdomain: "Input Guardrail",
+    usage: "both",
+    license: "ODC-BY (gated — agree to share contact info on HF before download)",
+    size: "262k train (4-cell vanilla/adversarial × harmful/benign) + 2,210 eval",
+    bestBaseline: "allenai/wildguard 97.7% jailbreak-detection F1 on WildJailbreak eval",
+    loraArtifacts: "allenai/wildguard (Mistral-7B FFT, LoRA-portable); community classifiers on HF",
+    tier: 1,
+    rank: 1,
+    rankReason: "Cross-listed from Agentic Stage 1 — repositioned as Stage 1 of a portable safety wrapper that brackets any downstream adapter (NL→SQL, Agentic, or future flows)",
+    taskCategories: ["Understanding"],
+    taskNote: "Binary classifier on inbound prompts. The 4-cell training design (vanilla/adversarial × harmful/benign) is what keeps false-positive rate low on benign-edgy prompts — the dominant failure mode of simpler jailbreak classifiers.",
+    notes: "Same HF dataset as the Agentic-domain entry — re-listed here to make the Safety Stack a first-class deployment recipe. Train on `vanilla` OR `adversarial` (whichever non-empty per row) → label from `data_type`. Gated dataset; one-time HF access agreement required. The eval split is no-completion adversarial-only (2k harmful + 210 benign) and is the canonical metric for over-refusal.",
+    composability: "Stage 1 — input guardrail wrapping any downstream task adapter",
+    pipelineStage: 1,
+    pipelineStageLabel: "Input Guardrail",
+    avgContextTokens: 150,
+    contextRelevancy: "High",
+    contextRelevancyNote: "The full prompt text is the only signal — adversarial intent is encoded in phrasing.",
+    trainableTasks: [
+      { name: "Jailbreak / Prompt-Injection Detection", capabilities: ["Classification"] },
+      { name: "Adversarial Prompt Classification", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "wildguardmix-safety",
+    name: "WildGuardMix (Safety Stack output verification)",
+    hf: "allenai/wildguardmix",
+    domain: "Safety Stack",
+    subdomain: "Output Verification",
+    usage: "both",
+    license: "ODC-BY (training); WildGuardTest is gated behind contact-email request",
+    size: "~92k items: 86,759 train + 1,725 eval; 3 task heads (prompt-harm / response-harm / response-refusal)",
+    bestBaseline: "allenai/wildguard: 97.7% prompt-harm / 87.4% response-harm / 88.9% refusal F1",
+    loraArtifacts: "allenai/wildguard (Mistral-7B FFT, LoRA-portable)",
+    tier: 1,
+    rank: 2,
+    rankReason: "Cross-listed from Agentic Stage 5 — Stage 2 of the portable safety wrapper. Three classification heads on shared (prompt, response) pairs: prompt-harm, response-harm, refusal-correctness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Binary heads on (prompt, response) pairs. Stage 2 of Safety Stack uses response-harm + refusal-correctness as the post-generation gate.",
+    notes: "Same HF dataset as the Agentic-domain entry — re-listed for the portable Safety Stack flow. Pairs with WildJailbreak Stage 1 (same lab, complementary inputs/outputs) and feeds Aegis 2.0 Stage 3 for fine-grained category labels when they're needed.",
+    composability: "Stage 2 — binary output verification (harm + refusal-correctness); pairs with Stage 1 input guardrail",
+    pipelineStage: 2,
+    pipelineStageLabel: "Output Verification",
+    avgContextTokens: 250,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Both prompt and response text are required to judge harm and refusal correctness.",
+    trainableTasks: [
+      { name: "Response Harm Classification", capabilities: ["Classification"] },
+      { name: "Refusal Correctness", capabilities: ["Classification"] },
+      { name: "Prompt Harm Classification", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "aegis-2.0-safety",
+    name: "Aegis 2.0 (Safety Stack harm categorization)",
+    hf: "nvidia/Aegis-AI-Content-Safety-Dataset-2.0",
+    domain: "Safety Stack",
+    subdomain: "Harm Categorization",
+    usage: "training",
+    license: "CC BY 4.0",
+    size: "~33.4k human-annotated prompt+response pairs across 13 harm categories",
+    bestBaseline: "nvidia/Llama-3.1-Nemoguard-8B-ContentSafety; competitive with WildGuard on response-harm",
+    loraArtifacts: "nvidia/Llama-3.1-Nemoguard-8B-ContentSafety (FFT, LoRA-portable)",
+    tier: 1,
+    rank: 3,
+    rankReason: "Cross-listed from Agentic Stage 5 — Stage 3 of the portable safety wrapper. Provides 13-category harm taxonomy when downstream policy needs to know *which* category triggered a refusal, not just yes/no",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Multi-class harm taxonomy (violence, sexual, hate, self-harm, illegal, privacy, ...). Stage 3 of Safety Stack: Stage 2 says yes/no; Stage 3 says which category for routing/policy.",
+    notes: "Same HF dataset as the Agentic-domain entry — re-listed for the portable Safety Stack. Layer on top of WildGuardMix Stage 2 binary verdict; only invoke when Stage 2 flags harmful, to save inference budget.",
+    composability: "Stage 3 — fine-grained 13-category harm head; layered atop Stage 2 binary verdict",
+    pipelineStage: 3,
+    pipelineStageLabel: "Harm Categorization",
+    avgContextTokens: 300,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Response text is primary signal; category requires reading full response.",
+    trainableTasks: [
+      { name: "Multi-class Harm Categorization", capabilities: ["Classification"] }
+    ]
+  },
+
+  // ── Tool-Calling ───────────────────────────────────────────────────────────
+  // Slim 2-stage subset of Agentic for non-agentic deployments (chatbot that occasionally calls tools).
+  // No safety wrapping, no multi-step planning.
+
+  {
+    id: "when2call-tc",
+    name: "When2Call (Tool-Calling Stage 1)",
+    hf: "nvidia/When2Call",
+    domain: "Tool-Calling",
+    subdomain: "Intent Classification",
+    usage: "training",
+    license: "CC BY 4.0",
+    size: "15K SFT train + 9K DPO preference train",
+    bestBaseline: "MNM-8B RPO: 52.4% macro-F1 on the original tool-use task",
+    loraArtifacts: "None (published model is full fine-tune MNM-8B)",
+    tier: 1,
+    rank: 1,
+    rankReason: "Cross-listed from Agentic Stage 2 — Stage 1 of slim Tool-Calling flow. The intent gate is the single highest-value addition for non-agentic deployments where tool use is occasional",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Routes user requests to call/clarify/refuse before the function-calling adapter runs. Same dataset as Agentic.",
+    notes: "Same HF dataset as the Agentic-domain entry. Use ONLY `train_sft` and `train_pref` configs; `test` config is BFCL v2 Live perturbations (would contaminate BFCL eval). For non-agentic deployments, this gate alone reduces tool hallucinations on out-of-scope queries.",
+    composability: "Stage 1 — intent gate before Stage 2 function calling; routes only `call` predictions to the FC adapter",
+    pipelineStage: 1,
+    pipelineStageLabel: "Intent Classification",
+    avgContextTokens: 200,
+    contextRelevancy: "Low",
+    contextRelevancyNote: "The decision to call a tool is primarily driven by the user's NL request, not external context.",
+    trainableTasks: [
+      { name: "Tool-Use Intent Classification", capabilities: ["Classification"] },
+      { name: "Tool Hallucination Reduction", capabilities: ["Instruction Following"] }
+    ]
+  },
+
+  {
+    id: "glaive-fc-v2-tc",
+    name: "Glaive Function Calling v2 (Tool-Calling Stage 2 primary)",
+    hf: "glaiveai/glaive-function-calling-v2",
+    domain: "Tool-Calling",
+    subdomain: "Function Calling",
+    usage: "training",
+    license: "CC BY-SA 4.0",
+    size: "~113k multi-turn conversations",
+    bestBaseline: "Base for Hermes-2-Pro, Mistral FC variants",
+    loraArtifacts: "96+ models on HF trained on this data",
+    tier: 1,
+    rank: 2,
+    rankReason: "Cross-listed from Agentic Stage 3 — primary Stage 2 trainer for Tool-Calling. CC-BY-SA, ungated, 96+ downstream LoRAs",
+    taskCategories: ["Generation", "Reasoning"],
+    taskNote: "Multi-turn function calling. Same dataset as Agentic Stage 3 primary.",
+    notes: "Same HF dataset as the Agentic-domain entry. Most accessible (ungated) and most widely-used FC corpus — recommended primary for any deployment where xLAM gating is friction.",
+    composability: "Stage 2 — primary FC trainer for slim Tool-Calling deployments",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 512,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "Multi-turn context matters for state tracking.",
+    trainableTasks: [
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] },
+      { name: "Tool Selection", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "xlam-60k-tc",
+    name: "xLAM Function Calling 60k (Tool-Calling Stage 2 augmentation)",
+    hf: "Salesforce/xlam-function-calling-60k",
+    domain: "Tool-Calling",
+    subdomain: "Function Calling",
+    usage: "training",
+    license: "Gated (Salesforce)",
+    size: "60k examples / 21 domains / 3,673 verified APIs",
+    bestBaseline: "xLAM-7b-fc-r 88.24% BFCL overall",
+    loraArtifacts: "xLAM-1b/7b-fc-r on HF; official QLoRA fine-tuning cookbook",
+    tier: 1,
+    rank: 3,
+    rankReason: "Cross-listed from Agentic Stage 3 — augments Glaive primary with verified APIs and SOTA BFCL baseline. ⚠️ Gated by Salesforce",
+    taskCategories: ["Generation", "Knowledge"],
+    taskNote: "Single-turn FC with 3,673 verified APIs. Same dataset as Agentic.",
+    notes: "Same HF dataset as the Agentic-domain entry. Use as augmentation atop Glaive when Salesforce access is available; skip for fully-open deployments.",
+    composability: "Stage 2 augmentation — verified-API FC examples atop Glaive primary",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 414,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "API specs help disambiguate function signatures.",
+    trainableTasks: [
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] },
+      { name: "Argument Extraction", capabilities: ["Information Extraction"] }
+    ]
+  },
+
+  {
+    id: "toolace-tc",
+    name: "ToolACE (Tool-Calling Stage 2 augmentation)",
+    hf: "Team-ACE/ToolACE",
+    domain: "Tool-Calling",
+    subdomain: "Function Calling",
+    usage: "training",
+    license: "Apache 2.0",
+    size: "26.5k synthesized API pool",
+    bestBaseline: "ToolACE-8B: 89.17% BFCL-v1 / 85.77% BFCL-v2",
+    loraArtifacts: "ToolACE-8B (LLaMA-3.1-8B base) checkpoint",
+    tier: 2,
+    rank: 4,
+    rankReason: "Cross-listed from Agentic Stage 3 — Apache 2.0 augmentation. Smaller than Glaive but adds API diversity",
+    taskCategories: ["Generation", "Knowledge"],
+    taskNote: "Single-turn FC, diverse API pool. Same dataset as Agentic.",
+    notes: "Same HF dataset as the Agentic-domain entry. Apache 2.0 makes it the cleanest augmentation for fully-open deployments.",
+    composability: "Stage 2 augmentation — Apache-2.0 alternative/supplement to Glaive",
+    pipelineStage: 2,
+    pipelineStageLabel: "Function Calling",
+    avgContextTokens: 400,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "26.5K API pool requires specs for correct parameter typing.",
+    trainableTasks: [
+      { name: "Function Calling (single-turn)", capabilities: ["Structured Output", "Instruction Following"] }
+    ]
+  },
+
+  // ── Structured Output ──────────────────────────────────────────────────────
+  // Cross-domain transfer hypothesis: FC → SQL → safety validation as one pipeline.
+  // Speculative — xLAM/Glaive → Spider/BIRD transfer is unproven; would need an experiment to validate.
+
+  {
+    id: "glaive-fc-v2-so",
+    name: "Glaive FC v2 (Structured Output Stage 1 — pretrain on JSON tool calls)",
+    hf: "glaiveai/glaive-function-calling-v2",
+    domain: "Structured Output",
+    subdomain: "FC Pretrain",
+    usage: "training",
+    license: "CC BY-SA 4.0",
+    size: "~113k multi-turn conversations",
+    bestBaseline: "Base for Hermes-2-Pro, Mistral FC variants (FC task, not SQL)",
+    loraArtifacts: "96+ models on HF (FC task)",
+    tier: 2,
+    rank: 1,
+    rankReason: "Cross-listed from Agentic Stage 3 — Stage 1 of speculative cross-domain Structured Output flow. Hypothesis: 'NL → constrained structured output' is a shared capability transferable from FC to SQL",
+    taskCategories: ["Generation", "Reasoning"],
+    taskNote: "⚠️ Speculative use: FC pretraining as a warmup before SQL specialization. Hypothesis: structured-output discipline (slot extraction, JSON validity, instruction adherence) transfers to SQL generation.",
+    notes: "Same HF dataset as the Agentic and Tool-Calling-domain entries. Cross-domain transfer FC → SQL is UNPROVEN — would need a small experiment (Glaive-only LoRA → Spider EX delta) to validate before recommending. If transfer works, this stage broadens schema-vocabulary robustness; if not, drop and start at Stage 2.",
+    composability: "Stage 1 — structured-output pretrain (JSON tool calls); precedes SQL specialization",
+    pipelineStage: 1,
+    pipelineStageLabel: "FC Pretrain",
+    avgContextTokens: 512,
+    contextRelevancy: "Medium",
+    contextRelevancyNote: "Multi-turn context for state tracking; FC task.",
+    trainableTasks: [
+      { name: "Function Calling (multi-turn)", capabilities: ["Structured Output", "Dialogue / Conversation"] }
+    ]
+  },
+
+  {
+    id: "spider-so",
+    name: "Spider 1.0 + BIRD-SQL + Gretel (Structured Output Stage 2 — SQL specialization)",
+    hf: "xlangai/spider",
+    domain: "Structured Output",
+    subdomain: "SQL Specialization",
+    usage: "both",
+    license: "CC BY-SA 4.0 (Spider+BIRD), Apache 2.0 (Gretel)",
+    size: "Spider 7k+1k / BIRD 6.6k+1.5k / Gretel 100k — combined ~115k SQL training rows",
+    bestBaseline: "CodeS-7B 85.4% Spider EX / MCI-SQL 74.45% BIRD EX",
+    loraArtifacts: "CodeS-7B; many community LoRAs (see NL→SQL domain)",
+    tier: 1,
+    rank: 2,
+    rankReason: "Cross-listed group from NL→SQL Stage 2 — represents the SQL-specialization stage of the cross-domain Structured Output flow",
+    taskCategories: ["Generation", "Reasoning"],
+    taskNote: "Specializes the structured-output capability (warmed up in Stage 1 on FC) to SQL syntax + schema reasoning.",
+    notes: "Aggregate entry pointing at Spider, BIRD, and Gretel — the same three datasets that anchor NL→SQL Stage 2. Listed as a single Structured Output entry because the experiment of interest is FC→SQL transfer at the *capability* level, not per-corpus contribution. Run individual NL→SQL entries for finer granularity.",
+    composability: "Stage 2 — SQL specialization atop FC pretrain; same corpora as NL→SQL Stage 2",
+    pipelineStage: 2,
+    pipelineStageLabel: "SQL Specialization",
+    avgContextTokens: 1000,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Schema is required for cross-domain SQL.",
+    trainableTasks: [
+      { name: "Text-to-SQL Generation", capabilities: ["Code", "Structured Output"] },
+      { name: "Cross-Domain SQL", capabilities: ["Code", "Reasoning"] }
+    ]
+  },
+
+  {
+    id: "wildguardmix-so",
+    name: "WildGuardMix (Structured Output Stage 3 — output validation)",
+    hf: "allenai/wildguardmix",
+    domain: "Structured Output",
+    subdomain: "Output Validation",
+    usage: "training",
+    license: "ODC-BY (training); WildGuardTest is gated",
+    size: "~92k items train + 1,725 eval",
+    bestBaseline: "allenai/wildguard 87.4% F1 response-harm",
+    loraArtifacts: "allenai/wildguard",
+    tier: 2,
+    rank: 3,
+    rankReason: "Cross-listed from Agentic Stage 5 — Stage 3 of Structured Output flow. Validates the generated SQL/JSON before execution",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Same role as in NL→SQL Stage 3 / Agentic Stage 5: post-generation safety/destructive-output gate.",
+    notes: "Same HF dataset as the Agentic, NL→SQL, and Safety-Stack entries. Re-templating required: feed (NL request, generated SQL or JSON tool call) as the (prompt, response) pair. Most useful for catching destructive DDL (DROP, DELETE without WHERE), exfiltration patterns, or function calls to dangerous tools.",
+    composability: "Stage 3 — output validation gate; same dataset as NL→SQL Stage 3 and Agentic Stage 5",
+    pipelineStage: 3,
+    pipelineStageLabel: "Output Validation",
+    avgContextTokens: 250,
+    contextRelevancy: "High",
+    contextRelevancyNote: "Both NL request and generated output are required.",
+    trainableTasks: [
+      { name: "Output Safety Classification", capabilities: ["Classification"] },
+      { name: "Destructive / Exfiltration Output Detection", capabilities: ["Code", "Classification"] }
+    ]
+  },
+
+  // ── Granite Libraries (pre-built adapters) ────────────────────────────────
+  // 9 adapters from the IBM Granite Libraries collection, each shipped as a built
+  // LoRA. No training dataset attached — these are existing capability adapters
+  // catalogued here so the capability map reflects what's already available.
+  // Source: https://huggingface.co/collections/ibm-granite/granite-libraries
+
+  {
+    id: "granite-query-rewrite",
+    name: "Query Rewrite (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Reading Comprehension",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 1,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Rewrites the user's query against retrieved context to make it self-contained / decontextualized for downstream retrieval or generation steps.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Listed here so the capability inventory reflects available pre-built capabilities alongside dataset-trainable ones.",
+    composability: "Pre-built — drop-in adapter for query rewriting in RAG pipelines",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Query Rewrite", capabilities: ["Reading Comprehension"] }
+    ]
+  },
+
+  {
+    id: "granite-factuality-detection",
+    name: "Factuality Detection (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Reading Comprehension",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 2,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Detects whether a generated response is factually grounded in the supplied context — passage-level entailment over the model's own output.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Distinct from Hallucination Detection: factuality checks alignment to a given passage, hallucination checks free-form claim plausibility.",
+    composability: "Pre-built — drop-in factuality verifier for RAG / grounded-generation outputs",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Factuality Detection", capabilities: ["Reading Comprehension"] }
+    ]
+  },
+
+  {
+    id: "granite-context-relevance",
+    name: "Context Relevance (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 3,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Classifies retrieved passages by relevance to the user's question — gates which chunks reach the generation step.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — retrieval-side relevance filter for RAG pipelines",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Context Relevance", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-answerability",
+    name: "Answerability Determination (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 4,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Decides whether the supplied context is sufficient to answer the user's question — drives refuse-vs-attempt routing for grounded QA.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — pre-generation gate for RAG; routes unanswerable queries to refusal / clarification",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Answerability Determination", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-hallucination-detection",
+    name: "Hallucination Detection (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 5,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Flags spans in a generated response that are not supported by retrieved context or are likely fabricated.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Complements Factuality Detection: hallucination flags unsupported claims, factuality scores grounding.",
+    composability: "Pre-built — post-generation hallucination flagger",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Hallucination Detection", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-guardian-core",
+    name: "Guardian Core (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 6,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Core safety classifier across IBM-defined harm categories — input-side and output-side guardrail.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Functional overlap with the Safety Stack flow (WildJailbreak / WildGuardMix / Aegis) but ships pre-trained.",
+    composability: "Pre-built — drop-in safety guardrail; alternative to the Safety Stack training flow",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Guardian Core", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-policy-guardrails",
+    name: "Policy Guardrails (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Classification",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 7,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Classification"],
+    taskNote: "Policy-driven gating — classifies prompts/responses against deployer-configurable policy rules (e.g. PII, brand, jurisdiction).",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use. Distinct from Guardian Core: policies are deployer-configurable, harm categories are baked-in.",
+    composability: "Pre-built — configurable policy layer atop Guardian Core's harm categories",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Policy Guardrails", capabilities: ["Classification"] }
+    ]
+  },
+
+  {
+    id: "granite-requirement-check",
+    name: "Requirement Check (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Instruction Following",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 8,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Reasoning"],
+    taskNote: "Verifies whether a response satisfies the explicit requirements stated in the prompt — instruction-adherence verifier.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — instruction-following auditor; pairs with any generation adapter as a post-hoc constraint check",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Requirement Check", capabilities: ["Instruction Following"] }
+    ]
+  },
+
+  {
+    id: "granite-query-clarification",
+    name: "Query Clarification (Granite Libraries)",
+    hf: "ibm-granite/granite-libraries",
+    domain: "Granite Libraries",
+    subdomain: "Dialogue / Conversation",
+    usage: "training",
+    license: "Apache 2.0 (per Granite Libraries collection)",
+    size: "—",
+    bestBaseline: "Pre-built adapter — ships with the Granite Libraries collection",
+    loraArtifacts: "Pre-built LoRA available in IBM Granite Libraries",
+    tier: 1,
+    rank: 9,
+    rankReason: "Pre-built Granite Libraries adapter — already shipped; included for capability-map completeness",
+    taskCategories: ["Understanding", "Generation"],
+    taskNote: "Generates a clarifying question when the user's request is ambiguous or under-specified — multi-turn conversational repair.",
+    notes: "Pre-built adapter from the IBM Granite Libraries collection. No training dataset attached — adapter ships ready-to-use.",
+    composability: "Pre-built — pairs with any intent-classification stage to handle the `clarify` branch (e.g. When2Call → Query Clarification)",
+    avgContextTokens: null,
+    contextRelevancy: null,
+    contextRelevancyNote: "",
+    trainableTasks: [
+      { name: "Query Clarification", capabilities: ["Dialogue / Conversation"] }
+    ]
   }
 ];
